@@ -6,11 +6,32 @@
   const faceCtx = faceCanvas.getContext('2d');
   const canvasElement = document.getElementById('gameCanvas');
   const ctx = canvasElement.getContext('2d');
+  const faceContainer = document.getElementById('faceContainer');
+  
+  // Detect if we're on a mobile device
+  const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+  
   // Resize canvas to full window
   function onResize() {
     canvasElement.width = window.innerWidth;
     canvasElement.height = window.innerHeight;
+    
+    // Update scaling factors for coordinates when size changes
+    updateScalingFactors();
   }
+  
+  // Keep track of scaling factors
+  let videoScaleX = 1;
+  let videoScaleY = 1;
+  
+  // Function to update scaling factors for face and hand coordinates
+  function updateScalingFactors() {
+    if (videoElement.videoWidth && videoElement.videoHeight) {
+      videoScaleX = faceContainer.clientWidth / videoElement.videoWidth;
+      videoScaleY = faceContainer.clientHeight / videoElement.videoHeight;
+    }
+  }
+  
   window.addEventListener('resize', onResize);
   onResize();
   // --- Game entity classes ---
@@ -107,10 +128,10 @@
     `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${f}`
   });
   faceMesh.setOptions({
-    maxNumFaces: 4,  // maximum concurrent faces to detect
+    maxNumFaces: isMobile ? 1 : 4,  // Reduce max faces on mobile
     refineLandmarks: true,
-    minDetectionConfidence: 0.5,
-    minTrackingConfidence: 0.5
+    minDetectionConfidence: isMobile ? 0.7 : 0.5, // Higher threshold on mobile for better performance
+    minTrackingConfidence: isMobile ? 0.7 : 0.5
   });
   faceMesh.onResults(onFaceResults);
 
@@ -118,9 +139,9 @@
     `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${f}`
   });
   hands.setOptions({
-    maxNumHands: 4,  // maximum concurrent hands to detect
-    minDetectionConfidence: 0.5,
-    minTrackingConfidence: 0.5
+    maxNumHands: isMobile ? 2 : 4,  // Reduce max hands on mobile
+    minDetectionConfidence: isMobile ? 0.7 : 0.5,
+    minTrackingConfidence: isMobile ? 0.7 : 0.5
   });
   hands.onResults(onHandResults);
 
@@ -141,10 +162,28 @@
   let audioCtx, analyser, dataArray;
   async function initMedia() {
     try {
-      const stream = await getUserMedia({video: true, audio: true});
+      // Optimize video constraints for mobile devices
+      let videoConstraints = {
+        video: true,
+        audio: true
+      };
+      
+      // For mobile, we need more specific constraints to get better performance
+      if (isMobile) {
+        videoConstraints = {
+          video: {
+            facingMode: 'user',
+            width: { ideal: 640, max: 1280 },
+            height: { ideal: 480, max: 720 }
+          },
+          audio: true
+        };
+      }
+      
+      const stream = await getUserMedia(videoConstraints);
       videoElement.srcObject = stream;
       videoElement.playsInline = true;
-      videoElement.srcObject = stream;
+      
       // Audio setup
       audioCtx = new (window.AudioContext || window.webkitAudioContext)();
       analyser = audioCtx.createAnalyser();
@@ -152,11 +191,16 @@
       micSource.connect(analyser);
       analyser.fftSize = 256;
       dataArray = new Uint8Array(analyser.fftSize);
+      
       videoElement.onloadedmetadata = () => {
         // Play video and set up face canvas size
         videoElement.play();
         faceCanvas.width = videoElement.videoWidth;
         faceCanvas.height = videoElement.videoHeight;
+        
+        // Update scaling factors
+        updateScalingFactors();
+        
         // Begin detection and animation loops
         detectLoop();
         lastTime = performance.now();
@@ -164,21 +208,56 @@
       };
     } catch (err) {
       console.error('Error accessing media devices.', err);
+      // Show fallback message to the user
+      alert('Unable to access camera. Please make sure you have given camera permission and try again.');
     }
   }
   // Wait for user gesture to start media
   const startBtn = document.getElementById('startButton');
   startBtn.addEventListener('click', () => {
     document.getElementById('startScreen').style.display = 'none';
+    
+    // On iOS, we need to request fullscreen for proper video permissions
+    if (isMobile && /iPhone|iPad|iPod/i.test(navigator.userAgent)) {
+      document.documentElement.requestFullscreen && document.documentElement.requestFullscreen();
+    }
+    
     initMedia();
+    
+    // Enable audio context on iOS
+    if (audioCtx && audioCtx.state === 'suspended') {
+      audioCtx.resume();
+    }
   });
 
-  // Loop to feed video frames into MediaPipe
+  // Enable touch events for mobile
+  if (isMobile) {
+    // Add touch handlers for mobile
+    canvasElement.addEventListener('touchstart', handleTouch, false);
+    canvasElement.addEventListener('touchmove', handleTouch, false);
+    
+    function handleTouch(event) {
+      event.preventDefault(); // Prevent scrolling
+      
+      // Process touch events here if needed
+      // Example: fireballs on touch?
+    }
+  }
+
+  // Loop to feed video frames into MediaPipe - optimize for mobile
   async function detectLoop() {
     if (videoElement.readyState >= 2) {
       try {
-        await faceMesh.send({image: videoElement});
-        await hands.send({image: videoElement});
+        // Reduce detection frequency on mobile for better performance
+        const skipFrames = isMobile ? 2 : 1;
+        if (!detectLoop.frameCount) detectLoop.frameCount = 0;
+        
+        detectLoop.frameCount++;
+        
+        if (detectLoop.frameCount % skipFrames === 0) {
+          await faceMesh.send({image: videoElement});
+          await hands.send({image: videoElement});
+        }
       } catch (e) {
         console.error('MediaPipe detection error:', e);
       }
@@ -211,7 +290,7 @@
         Creature, Snowie, FireSpinner, Ghost, Skeleton, Caster, Dragon
       ];
       const Type = types[Math.floor(r*types.length)];
-      creatures.push(new Type(0,0,640,480));
+      creatures.push(new Type(0,0, canvasElement.width, canvasElement.height));
       lastSpawn = nowSec;
     }
     // Blink lasers
@@ -223,10 +302,12 @@
         const mag = Math.hypot(dx,dy)||1e-6;
         const vx = dx/mag*400, vy = dy/mag*400;
         // scale face coords
-        const vw=640, vh=480;
-        const sx=canvasElement.width/vw, sy=canvasElement.height/vh;
-        const fx = metrics.faceCoords[0]*sx;
-        const fy = metrics.faceCoords[1]*sy;
+        const vw = videoElement.videoWidth || 640;
+        const vh = videoElement.videoHeight || 480;
+        const sw = canvasElement.width / vw;
+        const sh = canvasElement.height / vh;
+        const fx = metrics.faceCoords[0]*sw;
+        const fy = metrics.faceCoords[1]*sh;
         const eyeOffX=50, eyeOffY=-30;
         [{dx:-eyeOffX},{dx:eyeOffX}].forEach(o=>{
           const lx=fx+o.dx, ly=fy+eyeOffY;
@@ -236,15 +317,25 @@
     });
     // Hand attacks
     handPositions.forEach(([wx,wy])=>{
+      // Apply scaling to hand positions
+      const scaledWx = wx * canvasElement.width / faceCanvas.width;
+      const scaledWy = wy * canvasElement.height / faceCanvas.height;
       const cx=canvasElement.width/2, cy=canvasElement.height/2;
-      const dx= cx-wx, dy= cy-wy;
+      const dx= cx-scaledWx, dy= cy-scaledWy;
       const mag=Math.hypot(dx,dy)||1e-6;
-      fireballs.push(new Fireball(wx,wy,dx/mag*300,dy/mag*300));
+      fireballs.push(new Fireball(scaledWx,scaledWy,dx/mag*300,dy/mag*300));
     });
     // Update creatures
     creatures.forEach(c=>c.update(dt,canvasElement.width/2,canvasElement.height/2));
+    
     // Collision: creatures with avatars
-    const centers = metricsList.map(m=>[m.faceCoords[0]*canvasElement.width/640,m.faceCoords[1]*canvasElement.height/480]);
+    // Get scaled face coordinates using the proper scaling factors
+    const vw = videoElement.videoWidth || 640;
+    const vh = videoElement.videoHeight || 480;
+    const sw = canvasElement.width / vw;
+    const sh = canvasElement.height / vh;
+    const centers = metricsList.map(m=>[m.faceCoords[0]*sw, m.faceCoords[1]*sh]);
+    
     let newCreatures=[];
     creatures.forEach(c=>{
       let hit=false;
@@ -261,6 +352,7 @@
       });
       if(!hit) newCreatures.push(c);
     }); creatures.splice(0,creatures.length,...newCreatures);
+    
     // Trap creatures by mouth
     let rem=[];
     creatures.forEach(c=>{
@@ -273,6 +365,7 @@
       });
       if(!trapped) rem.push(c);
     }); creatures.splice(0,creatures.length,...rem);
+    
     // Transition to boss
     if(state==='minions' && waveKills>=killTargets[waveIndex]){
       const [bx,by]=centers[0]||[canvasElement.width/2,canvasElement.height/2];
@@ -296,8 +389,14 @@
     if(boss){ctx.fillStyle=boss.color;ctx.beginPath();ctx.arc(boss.x,boss.y,boss.radius,0,2*Math.PI);ctx.fill();}
     // Draw avatars
     metricsList.forEach((m,i)=>{
-      const fx=m.faceCoords[0]*canvasElement.width/640;
-      const fy=m.faceCoords[1]*canvasElement.height/480;
+      // Scale face coordinates properly
+      const vw = videoElement.videoWidth || 640;
+      const vh = videoElement.videoHeight || 480;
+      const sw = canvasElement.width / vw;
+      const sh = canvasElement.height / vh;
+      const fx = m.faceCoords[0] * sw;
+      const fy = m.faceCoords[1] * sh;
+      
       ctx.strokeStyle='white';ctx.lineWidth=2;
       ctx.beginPath();ctx.arc(fx,fy,50,0,2*Math.PI);ctx.stroke();
       // hearts
@@ -305,11 +404,17 @@
       for(let j=0;j<hl;j++){ctx.fillStyle='red';ctx.beginPath();ctx.arc(fx-20+ j*15, fy-70,5,0,2*Math.PI);ctx.fill();}
       // arms
       const faceX=fx,faceY=fy;
-      const lw = handPositions.filter(h=>h[0]<faceX).sort((a,b)=>((a[0]-faceX)**2+(a[1]-faceY)**2)-((b[0]-faceX)**2+(b[1]-faceY)**2))[0];
-      const rw = handPositions.filter(h=>h[0]>=faceX).sort((a,b)=>((a[0]-faceX)**2+(a[1]-faceY)**2)-((b[0]-faceX)**2+(b[1]-faceY)**2))[0];
+      // Scale hand positions to game canvas
+      const scaledHandPositions = handPositions.map(([hx, hy]) => [
+        hx * canvasElement.width / faceCanvas.width,
+        hy * canvasElement.height / faceCanvas.height
+      ]);
+      
+      const lw = scaledHandPositions.filter(h=>h[0]<faceX).sort((a,b)=>((a[0]-faceX)**2+(a[1]-faceY)**2)-((b[0]-faceX)**2+(b[1]-faceY)**2))[0];
+      const rw = scaledHandPositions.filter(h=>h[0]>=faceX).sort((a,b)=>((a[0]-faceX)**2+(a[1]-faceY)**2)-((b[0]-faceX)**2+(b[1]-faceY)**2))[0];
       const shY=fy+15;
-      if(lw){ctx.strokeStyle='gray';ctx.lineWidth=4;ctx.beginPath();ctx.moveTo(faceX-30,shY);ctx.lineTo(lw[0]*canvasElement.width/640,lw[1]*canvasElement.height/480);ctx.stroke();}
-      if(rw){ctx.strokeStyle='gray';ctx.lineWidth=4;ctx.beginPath();ctx.moveTo(faceX+30,shY);ctx.lineTo(rw[0]*canvasElement.width/640,rw[1]*canvasElement.height/480);ctx.stroke();}
+      if(lw){ctx.strokeStyle='gray';ctx.lineWidth=4;ctx.beginPath();ctx.moveTo(faceX-30,shY);ctx.lineTo(lw[0],lw[1]);ctx.stroke();}
+      if(rw){ctx.strokeStyle='gray';ctx.lineWidth=4;ctx.beginPath();ctx.moveTo(faceX+30,shY);ctx.lineTo(rw[0],rw[1]);ctx.stroke();}
     });
     requestAnimationFrame(animate);
   }
@@ -320,8 +425,10 @@
     // Draw video frame and face landmarks on faceCanvas
     faceCtx.save();
     faceCtx.clearRect(0, 0, faceCanvas.width, faceCanvas.height);
+    
     // Draw the camera frame
     faceCtx.drawImage(results.image, 0, 0, faceCanvas.width, faceCanvas.height);
+    
     // Draw face mesh
     const faces = results.multiFaceLandmarks || [];
     if (faces.length) {
@@ -337,36 +444,49 @@
       }
     }
     faceCtx.restore();
+    
+    // Update scaling factors in case video size changed
+    updateScalingFactors();
+    
     // Compute face metrics for game logic
     metricsList = faces.map((lm, i) => {
       // Ensure prevEyesClosed for this face
       if (prevEyesClosed.length <= i) prevEyesClosed.push(false);
+      
+      // Get actual video dimensions for scaling
+      const actualWidth = videoElement.videoWidth || 640;
+      const actualHeight = videoElement.videoHeight || 480;
+      
       // Compute face metrics
       // Approximate yaw/pitch by nose position
-      const fx = lm[1].x * 640;
-      const fy = lm[1].y * 480;
+      const fx = lm[1].x * actualWidth;
+      const fy = lm[1].y * actualHeight;
       const yaw = (lm[1].x - 0.5) * 2;
       const pitch = (lm[1].y - 0.5) * 2;
+      
       // Mouth open ratio
       const ul = lm[13], ll = lm[14];
       const ml = lm[61], mr = lm[291];
-      const vd = Math.hypot((ul.x-ll.x)*640, (ul.y-ll.y)*480);
-      const hd = Math.hypot((ml.x-mr.x)*640, (ml.y-mr.y)*480) || 1e-6;
+      const vd = Math.hypot((ul.x-ll.x)*actualWidth, (ul.y-ll.y)*actualHeight);
+      const hd = Math.hypot((ml.x-mr.x)*actualWidth, (ml.y-mr.y)*actualHeight) || 1e-6;
       const mouth_open_ratio = vd / hd;
+      
       // Eye aspect ratio (blink)
       const earCalc = idxs => {
         const p = idxs.map(i => lm[i]);
-        const v1 = Math.hypot((p[1].x-p[5].x)*640, (p[1].y-p[5].y)*480);
-        const v2 = Math.hypot((p[2].x-p[4].x)*640, (p[2].y-p[4].y)*480);
-        const h = Math.hypot((p[0].x-p[3].x)*640, (p[0].y-p[3].y)*480) || 1e-6;
+        const v1 = Math.hypot((p[1].x-p[5].x)*actualWidth, (p[1].y-p[5].y)*actualHeight);
+        const v2 = Math.hypot((p[2].x-p[4].x)*actualWidth, (p[2].y-p[4].y)*actualHeight);
+        const h = Math.hypot((p[0].x-p[3].x)*actualWidth, (p[0].y-p[3].y)*actualHeight) || 1e-6;
         return (v1 + v2) / (2*h);
       };
+      
       const leftEAR = earCalc([33,160,158,133,153,144]);
       const rightEAR = earCalc([362,385,387,263,373,380]);
       const earAvg = (leftEAR + rightEAR) / 2;
       const eyes_closed = earAvg < 0.2;
       const blink = prevEyesClosed[i] && !eyes_closed;
       prevEyesClosed[i] = eyes_closed;
+      
       return { yaw, pitch, mouth_open_ratio, eyes_closed, blink, faceCoords: [fx, fy] };
     });
   }
