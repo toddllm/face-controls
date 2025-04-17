@@ -37,3 +37,10 @@ ENV/
 
 # Media / temporary files
 *.tmp
+
+# AWS deployment temporary files
+.cert_arn
+dist-config.json
+dist-update.json
+dist-updated.json
+dns_record.json
