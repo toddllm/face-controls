@@ -1,10 +1,13 @@
 import pygame
 from face_controls.face import FaceController
 from face_controls.voice import VoiceController
+import mediapipe as mp
 import cv2
 import sys
 import random
 import math
+# Global creatures list for boss abilities
+creatures = []
 
 # --- Game entity classes and new main() with blink-triggered lasers and enemy waves ---
 class Creature:
@@ -69,8 +72,6 @@ class PurpleLaser(Laser):
         super().__init__(x, y, vx, vy)
         self.color = (200, 0, 200)
         self.radius = 6
-
-class Snowie(Creature):
 
 class Snowie(Creature):
     def __init__(self, cx, cy, screen_w, screen_h):
@@ -160,11 +161,159 @@ class MadackedaBoss(BaseBoss):
         self.laser_interval = 3.0
         self.laser_timer = 0.0
 
+# --- Additional Boss Classes ---
+class VortexBoss(BaseBoss):
+    def __init__(self, cx, cy):
+        super().__init__(cx, cy)
+        self.health = 35
+        self.color = (100, 100, 255)
+        self.pull_radius = 200
+        self.pull_strength = 100
+        self.pulse_interval = 3.0
+        self.pulse_timer = 0.0
+    def update(self, dt, cx, cy):
+        super().update(dt, cx, cy)
+        self.pulse_timer += dt
+        if self.pulse_timer >= self.pulse_interval:
+            for c in creatures:
+                dx = self.x - c.x; dy = self.y - c.y
+                dist = math.hypot(dx, dy) or 1e-6
+                if dist < self.pull_radius:
+                    c.x += dx/dist * self.pull_strength * dt
+                    c.y += dy/dist * self.pull_strength * dt
+            self.pulse_timer = 0.0
+
+class SpinnerBoss(BaseBoss):
+    def __init__(self, cx, cy):
+        super().__init__(cx, cy)
+        self.health = 30
+        self.color = (255, 200, 0)
+        self.spin_speed = 6.0
+        self.projectile_interval = 2.5
+        self.projectile_timer = 0.0
+    def update(self, dt, cx, cy):
+        self.angle += self.spin_speed * dt
+        self.x = cx; self.y = cy - 150
+        self.projectile_timer += dt
+        if self.projectile_timer >= self.projectile_interval:
+            for a in range(0, 360, 45):
+                rad = math.radians(a)
+                vx = math.cos(rad)*300; vy = math.sin(rad)*300
+                lasers.append(PurpleLaser(self.x, self.y, vx, vy))
+            self.projectile_timer = 0.0
+
+class RamBoss(BaseBoss):
+    def __init__(self, cx, cy):
+        super().__init__(cx, cy)
+        self.health = 40
+        self.color = (200, 100, 50)
+        self.charge_speed = 400
+        self.charge_interval = 4.0
+        self.charge_timer = 0.0
+        self.charging = False
+        self.charge_duration = 0.5
+        self.charge_time = 0.0
+    def update(self, dt, cx, cy):
+        if not self.charging:
+            self.charge_timer += dt
+            if self.charge_timer >= self.charge_interval:
+                self.charging = True
+                self.charge_time = 0.0
+                self.charge_timer = 0.0
+                dcs = [(math.hypot(self.x - px, self.y - py), (px, py)) for px, py in centers]
+                _, tgt = min(dcs, key=lambda x: x[0])
+                dx = tgt[0]-self.x; dy = tgt[1]-self.y; dist=math.hypot(dx,dy) or 1e-6
+                self.vx = dx/dist*self.charge_speed; self.vy = dy/dist*self.charge_speed
+        else:
+            self.charge_time += dt
+            self.x += self.vx*dt; self.y += self.vy*dt
+            if self.charge_time >= self.charge_duration:
+                self.charging = False
+        if not self.charging:
+            super().update(dt, cx, cy)
+
+class TrackerBoss(BaseBoss):
+    def __init__(self, cx, cy):
+        super().__init__(cx, cy)
+        self.health = 30
+        self.color = (0, 255, 100)
+        self.track_interval = 3.0
+        self.track_timer = 0.0
+    def update(self, dt, cx, cy):
+        super().update(dt, cx, cy)
+        self.track_timer += dt
+        if self.track_timer >= self.track_interval:
+            dcs = [(math.hypot(self.x - px, self.y - py), (px, py)) for px, py in centers]
+            _, tgt = min(dcs, key=lambda x: x[0])
+            dx = tgt[0]-self.x; dy = tgt[1]-self.y; dist=math.hypot(dx,dy) or 1e-6
+            vx = dx/dist*200; vy = dy/dist*200
+            lasers.append(PurpleLaser(self.x, self.y, vx, vy))
+            self.track_timer = 0.0
+
+class ArticalBoss(BaseBoss):
+    def __init__(self, cx, cy):
+        super().__init__(cx, cy)
+        self.health = 35
+        self.color = (100, 200, 200)
+        self.teleport_interval = 4.0
+        self.teleport_timer = 0.0
+    def update(self, dt, cx, cy):
+        super().update(dt, cx, cy)
+        self.teleport_timer += dt
+        if self.teleport_timer >= self.teleport_interval:
+            idx = random.randrange(len(centers)) if centers else 0
+            self.x, self.y = centers[idx]
+            self.teleport_timer = 0.0
+
+class ShadowBoss(BaseBoss):
+    def __init__(self, cx, cy):
+        super().__init__(cx, cy)
+        self.health = 40
+        self.color = (50, 50, 50)
+        self.clone_interval = 5.0
+        self.clone_timer = 0.0
+        self.clones = []
+    def update(self, dt, cx, cy):
+        super().update(dt, cx, cy)
+        self.clone_timer += dt
+        if self.clone_timer >= self.clone_interval:
+            edge = random.choice(['top','bottom','left','right'])
+            sw, sh = screen.get_size()
+            if edge=='top': px, py = random.uniform(0, sw), 0
+            elif edge=='bottom': px, py = random.uniform(0, sw), sh
+            elif edge=='left': px, py = 0, random.uniform(0, sh)
+            else: px, py = sw, random.uniform(0, sh)
+            self.clones.append(Creature(px, py, sw, sh))
+            self.clone_timer = 0.0
+
+class AlienKingBoss(BaseBoss):
+    def __init__(self, cx, cy):
+        super().__init__(cx, cy)
+        self.health = 60
+        self.color = (150, 0, 200)
+        self.ability_interval = 4.0
+        self.ability_timer = 0.0
+    def update(self, dt, cx, cy):
+        super().update(dt, cx, cy)
+        self.ability_timer += dt
+        if self.ability_timer >= self.ability_interval:
+            for a in range(0, 360, 30):
+                rad = math.radians(a + random.uniform(-15,15))
+                lasers.append(PurpleLaser(self.x, self.y, math.cos(rad)*350, math.sin(rad)*350))
+            self.ability_timer = 0.0
+
 def main():
     # New game loop replacing facial demo
     fc = FaceController()
     vc = VoiceController()
     pygame.init()
+    # Initialize hand detector
+    hands_detector = mp.solutions.hands.Hands(
+        static_image_mode=False,
+        max_num_hands=4,
+        min_detection_confidence=0.5,
+        min_tracking_confidence=0.5
+    )
     screen = pygame.display.set_mode((640, 480))
     clock = pygame.time.Clock()
     font = pygame.font.SysFont(None, 24)
@@ -172,14 +321,15 @@ def main():
     phrases = ["Hello, I'm your avatar.", "How are you today?", "I am your digital friend."]
     phrase_index = 0
     # Game state
+    global creatures
     creatures = []
     lasers = []
     fireballs = []  # for boss ranged attacks
     # Player lives and invulnerability timers
     player_lives = []
     invul_timers = []
-    # Wave and boss sequencing
-    kill_targets = [20, 30, 40]
+    # Wave and boss sequencing: kills before each boss
+    kill_targets = [20, 30, 40, 50, 60, 70, 80, 90, 100, 120]
     wave_kills = 0
     wave_index = 0
     boss = None
@@ -194,6 +344,23 @@ def main():
         if not metrics_list or frame is None:
             continue
         amp = vc.read()
+        # Hand-based attacks and capture hand positions
+        img_hands = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        hands_results = hands_detector.process(img_hands)
+        hand_positions = []
+        if hands_results.multi_hand_landmarks:
+            h_img, w_img, _ = frame.shape
+            for hl in hands_results.multi_hand_landmarks:
+                # wrist landmark (idx 0)
+                wx = int(hl.landmark[0].x * w_img)
+                wy = int(hl.landmark[0].y * h_img)
+                hand_positions.append((wx, wy))
+                # fire hand-based projectile towards screen center
+                tx, ty = w_img // 2, h_img // 2
+                dx_h, dy_h = tx - wx, ty - wy
+                mag_h = math.hypot(dx_h, dy_h) or 1e-6
+                vx_h, vy_h = dx_h / mag_h * 300, dy_h / mag_h * 300
+                lasers.append(Fireball(wx, wy, vx_h, vy_h))
         # Sync player lives/invulnerability with detected faces
         n = len(metrics_list)
         # Initialize lives and invulnerability for each new player
@@ -244,9 +411,9 @@ def main():
                 else:
                     creatures.append(Dragon(0, 0, screen_w, screen_h))
                 last_spawn = current
-        # Fire lasers on blink per avatar
+        # Fire lasers on blink per avatar (always enabled)
         for i, metrics in enumerate(metrics_list):
-            if metrics.get('blink') and state in ('minions','boss'):
+            if metrics.get('blink'):
                 # Direction based on head pose
                 yaw = metrics['yaw'] / (math.pi/2)
                 pitch = metrics['pitch'] / (math.pi/2)
@@ -321,74 +488,61 @@ def main():
         creatures = remaining
         # Transition to boss when wave_kills reaches target
         if state == 'minions' and wave_kills >= kill_targets[wave_index]:
-            # Initialize appropriate boss
+            # Initialize appropriate boss based on wave index
+            bx, by = centers[0] if centers else (320, 240)
             if wave_index == 0:
-                boss = SnowKing(centers[0][0], centers[0][1])
+                boss = SnowKing(bx, by)
                 state = 'boss_snow'
             elif wave_index == 1:
-                boss = FlameWarden(centers[0][0], centers[0][1])
+                boss = FlameWarden(bx, by)
                 state = 'boss_fire'
             elif wave_index == 2:
-                boss = MadackedaBoss(centers[0][0], centers[0][1])
+                boss = VortexBoss(bx, by)
+                state = 'boss_vortex'
+            elif wave_index == 3:
+                boss = SpinnerBoss(bx, by)
+                state = 'boss_spinner'
+            elif wave_index == 4:
+                boss = RamBoss(bx, by)
+                state = 'boss_ram'
+            elif wave_index == 5:
+                boss = TrackerBoss(bx, by)
+                state = 'boss_tracker'
+            elif wave_index == 6:
+                boss = ArticalBoss(bx, by)
+                state = 'boss_artical'
+            elif wave_index == 7:
+                boss = ShadowBoss(bx, by)
+                state = 'boss_shadow'
+            elif wave_index == 8:
+                boss = AlienKingBoss(bx, by)
+                state = 'boss_alienking'
+            elif wave_index == 9:
+                boss = MadackedaBoss(bx, by)
                 state = 'boss_madackeda'
-            # Reset wave_kills for boss phase
+            # Reset wave_kills and clear minions/lasers for boss phase
             wave_kills = 0
-            # Clear minions and lasers
             creatures.clear(); lasers.clear()
-        # Update boss phases
+        # Update boss phases (all bosses)
         if boss is not None:
             # Determine nearest avatar for targeting
             dcs_b = [(math.hypot(boss.x - cx, boss.y - cy), (cx, cy)) for cx, cy in centers]
             _, tgt = min(dcs_b, key=lambda x: x[0])
-            # Phase-specific boss behavior
+            # Call subclass update for movement and abilities
+            boss.update(dt, tgt[0], tgt[1])
+            # Phase-specific spawn logic for early bosses
             if state == 'boss_snow':
-                # Snow King logic
-                boss.update(dt, tgt[0], tgt[1])
                 boss.spawn_timer += dt
                 if boss.spawn_timer >= boss.spawn_interval:
                     creatures.append(Snowie(boss.x, boss.y, screen_w, screen_h))
-                    boss.spawn_timer = 0
+                    boss.spawn_timer = 0.0
             elif state == 'boss_fire':
-                # Flame Warden logic
-                boss.update(dt, tgt[0], tgt[1])
                 boss.spawn_timer += dt
                 if boss.spawn_timer >= boss.spawn_interval:
                     creatures.append(FireSpinner(boss.x, boss.y, screen_w, screen_h))
-                    boss.spawn_timer = 0
-            elif state == 'boss_madackeda':
-                # Madackeda special powers: teleport, shield, spawn both types
-                boss.update(dt, tgt[0], tgt[1])
-                # Teleportation
-                boss.teleport_timer += dt
-                if boss.teleport_timer >= boss.teleport_interval:
-                    boss.x, boss.y = random.choice(centers)
-                    boss.teleport_timer = 0
-                # Shield
-                boss.shield_timer += dt
-                if not boss.shield_active and boss.shield_timer >= boss.shield_interval:
-                    boss.shield_active = True
-                    boss.shield_timer = 0
-                    boss.shield_duration = boss.shield_duration_default
-                if boss.shield_active:
-                    boss.shield_duration -= dt
-                    if boss.shield_duration <= 0:
-                        boss.shield_active = False
-                # Spawn minions
-                boss.spawn_timer += dt
-                if boss.spawn_timer >= boss.spawn_interval:
-                    creatures.append(Snowie(boss.x, boss.y, screen_w, screen_h))
-                    creatures.append(FireSpinner(boss.x, boss.y, screen_w, screen_h))
-                    boss.spawn_timer = 0
-                # Purple V-shaped laser attack
-                boss.laser_timer += dt
-                if boss.laser_timer >= boss.laser_interval:
-                    # angles for V shape: 240° and 300° (down-left, down-right)
-                    for ang in (math.radians(240), math.radians(300)):
-                        vx = math.cos(ang) * 400
-                        vy = math.sin(ang) * 400
-                        lasers.append(PurpleLaser(boss.x, boss.y, vx, vy))
-                    boss.laser_timer = 0
-            # Boss collision damage to players
+                    boss.spawn_timer = 0.0
+            # Creature spawn disabled for other boss phases
+            # Boss damage to players on contact
             for i, (cx_i, cy_i) in enumerate(centers):
                 if invul_timers[i] <= 0 and math.hypot(boss.x - cx_i, boss.y - cy_i) < (boss.radius + 100):
                     player_lives[i] -= 1
@@ -400,17 +554,18 @@ def main():
             if not getattr(boss, 'shield_active', False):
                 for l in lasers:
                     if l.active and math.hypot(boss.x - l.x, boss.y - l.y) < (boss.radius + l.radius):
-                        boss.health -= 1; l.active = False
-            # Check for boss defeat
+                        boss.health -= 1
+                        l.active = False
+            # Boss defeat and wave progression
             if boss.health <= 0:
                 wave_index += 1
-                # Advance to next phase or victory
                 if wave_index < len(kill_targets):
                     state = 'minions'
                 else:
                     state = 'victory'
-                    # clear any remaining entities
-                    creatures.clear(); lasers.clear(); fireballs.clear()
+                    creatures.clear()
+                    lasers.clear()
+                    fireballs.clear()
                 boss = None
         # Drawing
         screen.fill((30, 30, 30))
@@ -464,6 +619,36 @@ def main():
             start_x = cx - ((hl-1) * spacing)//2
             for j in range(hl):
                 pygame.draw.circle(screen, (255,0,0), (start_x + j*spacing, heart_y), heart_r)
+            # Draw dynamic arms based on hand detection
+            arm_color = (200, 200, 200)
+            face_x, face_y = metrics.get('face_coords', (cx, cy))
+            # Shoulder positions
+            shoulder_y = cy + int(radius * 0.3)
+            shoulder_left = (cx - int(radius * 0.6), shoulder_y)
+            shoulder_right = (cx + int(radius * 0.6), shoulder_y)
+            # Assign nearest left/right hand
+            l_hand = None; r_hand = None
+            left_cands = [( (hp[0]-face_x)**2 + (hp[1]-face_y)**2, hp) for hp in hand_positions if hp[0] < face_x]
+            right_cands = [( (hp[0]-face_x)**2 + (hp[1]-face_y)**2, hp) for hp in hand_positions if hp[0] >= face_x]
+            if left_cands:
+                l_hand = min(left_cands)[1]
+            if right_cands:
+                r_hand = min(right_cands)[1]
+            # Draw left arm
+            max_len = radius * 1.2
+            if l_hand:
+                dx, dy = l_hand[0] - face_x, l_hand[1] - face_y
+                mag = math.hypot(dx, dy) or 1e-6
+                factor = min(mag, max_len) / mag
+                end_l = (shoulder_left[0] + dx * factor, shoulder_left[1] + dy * factor)
+                pygame.draw.line(screen, arm_color, shoulder_left, (int(end_l[0]), int(end_l[1])), 4)
+            # Draw right arm
+            if r_hand:
+                dx, dy = r_hand[0] - face_x, r_hand[1] - face_y
+                mag = math.hypot(dx, dy) or 1e-6
+                factor = min(mag, max_len) / mag
+                end_r = (shoulder_right[0] + dx * factor, shoulder_right[1] + dy * factor)
+                pygame.draw.line(screen, arm_color, shoulder_right, (int(end_r[0]), int(end_r[1])), 4)
         # Creatures
         for c in creatures:
             col = getattr(c, 'color', (0,255,0))
