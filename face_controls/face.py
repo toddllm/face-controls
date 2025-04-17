@@ -116,6 +116,9 @@ class FaceController:
                 self.prev_eyes_closed[i] = closed
                 metrics['eyes_closed'] = closed
                 metrics['blink'] = blink
+                # Record face pixel coordinates (landmark 1 ~ nose tip)
+                coords = (lm[1].x * w, lm[1].y * h)
+                metrics['face_coords'] = coords
                 metrics_list.append(metrics)
         return metrics_list, frame
 
