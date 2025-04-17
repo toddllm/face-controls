@@ -6,6 +6,11 @@ import cv2
 import sys
 import random
 import math
+ 
+# Global entity lists for boss abilities
+creatures = []
+lasers = []
+fireballs = []
 # Global creatures list for boss abilities
 creatures = []
 
@@ -278,12 +283,13 @@ class ShadowBoss(BaseBoss):
         self.clone_timer += dt
         if self.clone_timer >= self.clone_interval:
             edge = random.choice(['top','bottom','left','right'])
-            sw, sh = screen.get_size()
+            surface = pygame.display.get_surface()
+            sw, sh = surface.get_size() if surface else (640, 480)
             if edge=='top': px, py = random.uniform(0, sw), 0
             elif edge=='bottom': px, py = random.uniform(0, sw), sh
             elif edge=='left': px, py = 0, random.uniform(0, sh)
             else: px, py = sw, random.uniform(0, sh)
-            self.clones.append(Creature(px, py, sw, sh))
+            creatures.append(Creature(px, py, sw, sh))
             self.clone_timer = 0.0
 
 class AlienKingBoss(BaseBoss):
@@ -321,7 +327,7 @@ def main():
     phrases = ["Hello, I'm your avatar.", "How are you today?", "I am your digital friend."]
     phrase_index = 0
     # Game state
-    global creatures
+    global creatures, lasers, fireballs
     creatures = []
     lasers = []
     fireballs = []  # for boss ranged attacks
