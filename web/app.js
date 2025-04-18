@@ -375,7 +375,14 @@
       waveKills=0;creatures.length=0;lasers.length=0;
     }
     // Update boss
-    if(boss){ boss.update(dt,canvasElement.width/2,canvasElement.height/2); if(boss.health<=0){waveIndex++;state='minions';boss=null;} }
+    if(boss){
+      if(boss.constructor && boss.constructor.name === 'MadackedaBoss' && madackedaImg.complete && madackedaImg.naturalWidth > 0) {
+        const size = boss.radius * 2;
+        ctx.drawImage(madackedaImg, boss.x - size/2, boss.y - size/2, size, size);
+      } else {
+        ctx.fillStyle=boss.color;ctx.beginPath();ctx.arc(boss.x,boss.y,boss.radius,0,2*Math.PI);ctx.fill();
+      }
+    }
     // Update lasers/fireballs
     lasers.forEach(l=>l.update(dt));
     fireballs.forEach(f=>f.update(dt));
@@ -522,4 +529,8 @@
     }
     faceCtx.restore();
   }
+
+  // Load Madackeda boss image
+  const madackedaImg = new window.Image();
+  madackedaImg.src = 'images/Madackeda.png';
 })();
