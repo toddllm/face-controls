@@ -377,8 +377,27 @@
     // Update boss
     if(boss){ boss.update(dt,canvasElement.width/2,canvasElement.height/2); if(boss.health<=0){waveIndex++;state='minions';boss=null;} }
     // Update lasers/fireballs
-    lasers.forEach(l=>l.update(dt)); lasers.filter(l=>l.active);
-    fireballs.forEach(f=>f.update(dt)); fireballs.filter(f=>f.active);
+    lasers.forEach(l=>l.update(dt));
+    fireballs.forEach(f=>f.update(dt));
+
+    // Collision: lasers hitting creatures
+    let remainingCreatures = [];
+    creatures.forEach(c => {
+      let killed = false;
+      lasers.forEach(l => {
+        if (l.active && Math.hypot(c.x - l.x, c.y - l.y) < c.radius + l.radius) {
+          killed = true;
+          l.active = false;
+        }
+      });
+      if (!killed) remainingCreatures.push(c);
+    });
+    creatures.splice(0, creatures.length, ...remainingCreatures);
+
+    // Remove inactive lasers and fireballs
+    lasers.splice(0, lasers.length, ...lasers.filter(l => l.active));
+    fireballs.splice(0, fireballs.length, ...fireballs.filter(f => f.active));
+    
     // Reduce invulnerability timers
     invulTimers.forEach((v,i)=>invulTimers[i]=Math.max(0,v-dt));
     // Render
