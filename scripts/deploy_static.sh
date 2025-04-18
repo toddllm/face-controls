@@ -12,11 +12,7 @@ if [ -f .env ]; then
 fi
 # Deploy static web files to S3 website bucket matching your DOMAIN
 ## Static website hosting bucket must match domain name
-if [ -z "${DOMAIN:-}" ]; then
-  echo "Error: DOMAIN must be set in .env" >&2
-  exit 1
-fi
-HOST_BUCKET="${DOMAIN}"
+HOST_BUCKET="facecontrolgame-static"
 echo "Ensuring S3 bucket s3://$HOST_BUCKET exists..." >&2
 if ! aws s3api head-bucket --bucket "$HOST_BUCKET" >/dev/null 2>&1; then
   echo "Bucket s3://$HOST_BUCKET not found. Creating..." >&2
