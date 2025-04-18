@@ -97,3 +97,9 @@ This will issue the certificate, validate it via DNS, and attach it to CloudFron
 ### Notes
 - For camera access, use the CloudFront URL while waiting for DNS propagation
 - The website is accessible via both S3 direct URL and CloudFront, but camera features require HTTPS (CloudFront)
+
+Start and Stop:
+```bash
+make start  # start the server in background
+make stop   # stop the server
+```

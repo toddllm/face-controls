@@ -58,3 +58,9 @@ update-cloudfront:
 # Full SSL workflow: request -> wait -> update CloudFront
 ssl-deploy:
 	@bash scripts/ssl_deploy.sh
+.PHONY: start stop
+start:
+	bash scripts/start.sh
+
+stop:
+	bash scripts/stop.sh
