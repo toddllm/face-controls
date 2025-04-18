@@ -23,15 +23,20 @@ Press 'q' in the webcam window or close the window to exit.
 This repository includes a FastAPI backend (`server.py`) serving the API and static files, and a browser-based front-end in the `web/` directory.
 
 ### Running Locally
-1. Install Python dependencies:
+1. Create and activate a Python virtual environment:
+   ```bash
+   python3 -m venv venv
+   source venv/bin/activate
+   ```
+2. Install Python dependencies:
    ```bash
    pip install -r requirements.txt
    ```
-2. Start the FastAPI server (serves both API and static front-end):
+3. Start the FastAPI server (serves both API and static front-end):
    ```bash
    make serve
    ```
-3. Open your browser to `http://localhost:8000/` to access the app.
+4. Open your browser to `http://localhost:8000/` to access the app.
 
 ### Deployment to AWS S3 (Static Site)
 Configure AWS credentials and target domain in `.env` (see `.env.example`):
