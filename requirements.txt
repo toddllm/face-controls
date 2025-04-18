@@ -3,4 +3,7 @@ opencv-python
 numpy
 pyaudio
 pygame
+fastapi
+uvicorn[standard]
+python-dotenv
 pyttsx3
