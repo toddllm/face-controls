@@ -345,15 +345,23 @@
       const mag=Math.hypot(dx,dy)||1e-6;
       fireballs.push(new Fireball(scaledWx,scaledWy,dx/mag*300,dy/mag*300));
     });
-    // Hand/arm damage: if hand is close to a creature or boss, deal damage
+    // Precompute video/canvas scaling and centers for defeat logic
+    const vw = videoElement.videoWidth || 640;
+    const vh = videoElement.videoHeight || 480;
+    const sw = canvasElement.width / vw;
+    const sh = canvasElement.height / vh;
+    const centers = metricsList.map(m=>[m.faceCoords[0]*sw, m.faceCoords[1]*sh]);
+    // --- Robust monster defeat logic ---
+    // 1. Mark creatures for removal and reason
+    let defeatMap = new Map(); // c => reason
+    // Hand/arm defeat
     handPositions.forEach(([wx,wy])=>{
       const scaledWx = wx * canvasElement.width / faceCanvas.width;
       const scaledWy = wy * canvasElement.height / faceCanvas.height;
       creatures.forEach((c,ci)=>{
-        if(Math.hypot(c.x-scaledWx,c.y-scaledWy)<c.radius+20) {
+        if(!defeatMap.has(c) && Math.hypot(c.x-scaledWx,c.y-scaledWy)<c.radius+20) {
           handHitEffects.push({x:c.x,y:c.y,t:0});
-          creatures.splice(ci,1);
-          waveKills++;
+          defeatMap.set(c, 'hand');
         }
       });
       if(boss && Math.hypot(boss.x-scaledWx,boss.y-scaledWy)<boss.radius+30) {
@@ -361,14 +369,38 @@
         boss.health -= 1;
       }
     });
+    // Laser defeat
+    lasers.forEach(l => {
+      creatures.forEach(c => {
+        if(!defeatMap.has(c) && l.active && Math.hypot(c.x - l.x, c.y - l.y) < c.radius + l.radius) {
+          l.active = false;
+          defeatMap.set(c, 'laser');
+        }
+      });
+    });
+    // Mouth capture defeat
+    creatures.forEach(c=>{
+      centers.forEach((cen,i)=>{
+        if(!defeatMap.has(c) && metricsList[i].mouth_open_ratio>0.03){
+          const mouthRadius = 60;
+          const d=Math.hypot(c.x-cen[0],c.y-(cen[1]+30));
+          if(d<mouthRadius){
+            mouthCaptureEffects.push({x:c.x,y:c.y,t:0});
+            defeatMap.set(c, 'mouth');
+          }
+        }
+      });
+    });
+    // 2. Remove marked creatures and increment waveKills
+    let survivors = [];
+    creatures.forEach(c => {
+      if(defeatMap.has(c)) waveKills++;
+      else survivors.push(c);
+    });
+    creatures.splice(0, creatures.length, ...survivors);
     // Update creatures
     creatures.forEach(c=>c.update(dt,canvasElement.width/2,canvasElement.height/2));
     // Collision: creatures with avatars
-    const vw = videoElement.videoWidth || 640;
-    const vh = videoElement.videoHeight || 480;
-    const sw = canvasElement.width / vw;
-    const sh = canvasElement.height / vh;
-    const centers = metricsList.map(m=>[m.faceCoords[0]*sw, m.faceCoords[1]*sh]);
     let newCreatures=[];
     creatures.forEach(c=>{
       let hit=false;
@@ -385,32 +417,6 @@
       });
       if(!hit) newCreatures.push(c);
     }); creatures.splice(0,creatures.length,...newCreatures);
-    // Trap creatures by mouth (improved effect)
-    let rem=[];
-    creatures.forEach(c=>{
-      let trapped=false;
-      centers.forEach((cen,i)=>{
-        if(!trapped && metricsList[i].mouth_open_ratio>0.03){
-          // Use a larger capture radius and visualize it
-          const mouthRadius = 60; // Increased for easier capture
-          const d=Math.hypot(c.x-cen[0],c.y-(cen[1]+30)); // mouth is below face center
-          // Draw debug capture area
-          ctx.save();
-          ctx.globalAlpha = 0.18;
-          ctx.beginPath();
-          ctx.arc(cen[0], cen[1]+30, mouthRadius, 0, 2*Math.PI);
-          ctx.fillStyle = '#0ff';
-          ctx.fill();
-          ctx.restore();
-          if(d<mouthRadius){
-            waveKills++;
-            mouthCaptureEffects.push({x:c.x,y:c.y,t:0});
-            trapped=true;
-          }
-        }
-      });
-      if(!trapped) rem.push(c);
-    }); creatures.splice(0,creatures.length,...rem);
     // Transition to boss
     if(state==='minions' && waveKills>=killTargets[waveIndex]){
       const [bx,by]=centers[0]||[canvasElement.width/2,canvasElement.height/2];
@@ -458,25 +464,6 @@
     // Update lasers/fireballs
     lasers.forEach(l=>l.update(dt));
     fireballs.forEach(f=>f.update(dt));
-    // Collision: lasers hitting creatures
-    let remainingCreatures = [];
-    creatures.forEach(c => {
-      let killed = false;
-      lasers.forEach(l => {
-        if (l.active && Math.hypot(c.x - l.x, c.y - l.y) < c.radius + l.radius) {
-          killed = true;
-          l.active = false;
-        }
-      });
-      if (!killed) remainingCreatures.push(c);
-      else waveKills++;
-    });
-    creatures.splice(0, creatures.length, ...remainingCreatures);
-    // Remove inactive lasers and fireballs
-    lasers.splice(0, lasers.length, ...lasers.filter(l => l.active));
-    fireballs.splice(0, fireballs.length, ...fireballs.filter(f => f.active));
-    // Reduce invulnerability timers
-    invulTimers.forEach((v,i)=>invulTimers[i]=Math.max(0,v-dt));
     // Render
     ctx.clearRect(0,0,canvasElement.width,canvasElement.height);
     // Draw level and monster counter to the right of the video overlay
@@ -530,10 +517,6 @@
     if(boss){ctx.fillStyle=boss.color;ctx.beginPath();ctx.arc(boss.x,boss.y,boss.radius,0,2*Math.PI);ctx.fill();}
     // Draw avatars with arms/hands
     metricsList.forEach((m,i)=>{
-      const vw = videoElement.videoWidth || 640;
-      const vh = videoElement.videoHeight || 480;
-      const sw = canvasElement.width / vw;
-      const sh = canvasElement.height / vh;
       const fx = m.faceCoords[0] * sw;
       const fy = m.faceCoords[1] * sh;
       ctx.strokeStyle='white';ctx.lineWidth=2;
