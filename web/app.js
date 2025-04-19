@@ -466,6 +466,12 @@
     fireballs.forEach(f=>f.update(dt));
     // Render
     ctx.clearRect(0,0,canvasElement.width,canvasElement.height);
+    // DEBUG: Draw a large green rectangle to confirm canvas visibility
+    ctx.save();
+    ctx.globalAlpha = 1.0;
+    ctx.fillStyle = '#00ff00';
+    ctx.fillRect(0, 0, 300, 300);
+    ctx.restore();
     // Draw level and monster counter to the right of the video overlay
     let overlayLeft = 340; // fallback if faceContainer not found
     if (faceContainer) {

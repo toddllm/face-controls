@@ -6,7 +6,16 @@
   <title>Avatar Game</title>
   <style>
     body, html { margin: 0; padding: 0; overflow: hidden; background: #111; }
-    #gameCanvas { display: block; }
+    #gameCanvas {
+      display: block;
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      z-index: 100;
+      pointer-events: none; /* So it doesn't block UI */
+    }
     
     /* Responsive video container */
     #faceContainer {
