@@ -699,6 +699,9 @@
     faceCtx.save();
     faceCtx.clearRect(0, 0, faceCanvas.width, faceCanvas.height);
     
+    // Mirror the camera view horizontally
+    faceCtx.translate(faceCanvas.width, 0);
+    faceCtx.scale(-1, 1);
     // Draw the camera frame
     faceCtx.drawImage(results.image, 0, 0, faceCanvas.width, faceCanvas.height);
     
