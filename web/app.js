@@ -385,25 +385,28 @@
     // Voice-activated straight laser (improved: use head movement direction)
     if(audioAmplitude > 0.25) { // Threshold for loud sound
       metricsList.forEach((metrics,i) => {
-        // Use head movement direction if significant, else fallback to yaw/pitch
+        // Use head movement direction if significant, else fallback to yaw/pitch, else default up
         const prev = prevFaceCenters[i] || [metrics.faceCoords[0]*sw, metrics.faceCoords[1]*sh];
         const curr = centers[i];
         const dxMove = curr[0] - prev[0];
         const dyMove = curr[1] - prev[1];
         const magMove = Math.hypot(dxMove, dyMove);
         let dx, dy;
-        if (magMove > 2) { // If head moved enough pixels, use that direction
+        if (magMove > 0.5) {
           dx = dxMove;
           dy = dyMove;
-        } else {
-          // Fallback to yaw/pitch
+        } else if (Math.abs(metrics.yaw) > 0.01 || Math.abs(metrics.pitch) > 0.01) {
           dx = metrics.yaw * 100;
           dy = -metrics.pitch * 100;
+        } else {
+          dx = 0;
+          dy = -1; // Default: shoot straight up
         }
         const mag = Math.hypot(dx,dy)||1e-6;
         const vx = dx/mag*600, vy = dy/mag*600;
         const fx = curr[0];
         const fy = curr[1];
+        console.log('Laser direction', {dx, dy, vx, vy});
         lasers.push(new Laser(fx, fy, vx, vy));
       });
     }
