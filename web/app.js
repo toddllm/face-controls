@@ -325,6 +325,16 @@
       if(boss && Math.hypot(boss.x-scaledWx,boss.y-scaledWy)<boss.radius+30) {
         handHitEffects.push({x:boss.x,y:boss.y,t:0});
         boss.health -= 1;
+        boss.health = Math.max(0, boss.health);
+        console.log('Boss hit! Health:', boss.health);
+        if (boss.health === 0) {
+          // Advance to next level
+          boss = null;
+          waveIndex = Math.min(waveIndex + 1, killTargets.length - 1);
+          state = 'minions';
+          waveKills = 0;
+          lastSpawn = performance.now()/1000;
+        }
       }
     });
     // Laser defeat
@@ -339,7 +349,16 @@
       if (boss && l.active && Math.hypot(boss.x - l.x, boss.y - l.y) < boss.radius + l.radius) {
         l.active = false;
         boss.health -= 1;
+        boss.health = Math.max(0, boss.health);
         console.log('Boss hit! Health:', boss.health);
+        if (boss.health === 0) {
+          // Advance to next level
+          boss = null;
+          waveIndex = Math.min(waveIndex + 1, killTargets.length - 1);
+          state = 'minions';
+          waveKills = 0;
+          lastSpawn = performance.now()/1000;
+        }
       }
     });
     // Mouth capture defeat
