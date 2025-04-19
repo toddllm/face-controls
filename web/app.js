@@ -286,6 +286,8 @@
   let handHitEffects = [];
   // Track previous face positions for shooting direction
   let prevFaceCenters = [];
+  // Global to store latest face landmarks for use in animation loop
+  let latestFaceLandmarks = [];
   function animate(now=performance.now()) {
     if (paused) return;
     const dt = (now - lastTime) / 1000;
@@ -387,8 +389,8 @@
       metricsList.forEach((metrics,i) => {
         const prev = prevFaceCenters[i] || [metrics.faceCoords[0]*sw, metrics.faceCoords[1]*sh];
         const curr = centers[i];
-        // Get eye positions from face landmarks
-        const lm = results && results.multiFaceLandmarks && results.multiFaceLandmarks[i];
+        // Get eye positions from latestFaceLandmarks
+        const lm = latestFaceLandmarks && latestFaceLandmarks[i];
         let leftEye = curr, rightEye = curr;
         if (lm) {
           leftEye = [lm[33].x * canvasElement.width, lm[33].y * canvasElement.height];
@@ -412,8 +414,8 @@
       if (metrics.blink) {
         const prev = prevFaceCenters[i] || [metrics.faceCoords[0]*sw, metrics.faceCoords[1]*sh];
         const curr = centers[i];
-        // Get eye positions from face landmarks
-        const lm = results && results.multiFaceLandmarks && results.multiFaceLandmarks[i];
+        // Get eye positions from latestFaceLandmarks
+        const lm = latestFaceLandmarks && latestFaceLandmarks[i];
         let leftEye = curr, rightEye = curr;
         if (lm) {
           leftEye = [lm[33].x * canvasElement.width, lm[33].y * canvasElement.height];
@@ -715,6 +717,8 @@
       
       return { yaw, pitch, mouth_open_ratio, eyes_closed, blink, faceCoords: [fx, fy] };
     });
+    // Store latest face landmarks globally for use in animation loop
+    latestFaceLandmarks = faces;
   }
   function onHandResults(results) {
     // Draw hand landmarks on faceCanvas and update positions for game logic
