@@ -442,6 +442,20 @@
       } else {
         ctx.fillStyle=boss.color;ctx.beginPath();ctx.arc(boss.x,boss.y,boss.radius,0,2*Math.PI);ctx.fill();
       }
+      // Boss-player collision detection
+      centers.forEach((cen, i) => {
+        if (invulTimers[i] <= 0) {
+          const d = Math.hypot(boss.x - cen[0], boss.y - cen[1]);
+          if (d < boss.radius + 50) { // 50 is the avatar radius
+            playerLives[i] = (playerLives[i] || 3) - 1;
+            invulTimers[i] = 2.0;
+            if (playerLives[i] <= 0) {
+              playerLives[i] = 3;
+              invulTimers[i] = 2.0;
+            }
+          }
+        }
+      });
     }
     // Update lasers/fireballs
     lasers.forEach(l=>l.update(dt));
