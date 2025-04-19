@@ -474,20 +474,23 @@
     invulTimers.forEach((v,i)=>invulTimers[i]=Math.max(0,v-dt));
     // Render
     ctx.clearRect(0,0,canvasElement.width,canvasElement.height);
-    // Draw level and monster counter
+    // Draw level and monster counter to the right of the video overlay
+    let overlayLeft = 340; // fallback if faceContainer not found
+    if (faceContainer) {
+      const rect = faceContainer.getBoundingClientRect();
+      overlayLeft = rect.right + 20;
+    }
     ctx.save();
     ctx.font = 'bold 22px Arial';
     ctx.fillStyle = '#fff';
     ctx.globalAlpha = 0.92;
     ctx.textAlign = 'left';
     ctx.textBaseline = 'top';
-    // Level number (waveIndex is 0-based)
-    ctx.fillText(`Level: ${waveIndex+1}`, 18, 18);
-    // Monster defeat counter (only show during minion phase)
+    ctx.fillText(`Level: ${waveIndex+1}`, overlayLeft, 18);
     if(state === 'minions') {
-      ctx.fillText(`Monsters defeated: ${waveKills} / ${killTargets[waveIndex]}`, 18, 48);
+      ctx.fillText(`Monsters defeated: ${waveKills} / ${killTargets[waveIndex]}`, overlayLeft, 48);
     } else if (boss) {
-      ctx.fillText(`Boss: ${boss.constructor.name.replace('Boss','')}`, 18, 48);
+      ctx.fillText(`Boss: ${boss.constructor.name.replace('Boss','')}`, overlayLeft, 48);
     }
     ctx.restore();
     // Draw mouth capture effects
