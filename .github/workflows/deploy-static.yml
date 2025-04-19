@@ -18,15 +18,15 @@ jobs:
         with:
           node-version: '20'
 
-      - name: Install AWS CLI
-        uses: aws-actions/setup-aws-cli@v3
-
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ secrets.AWS_REGION }}
+          aws-region: ${{ secrets.AWS_REGION || 'us-east-1' }}
+
+      - name: Print AWS CLI version
+        run: aws --version
 
       - name: Sync web/ to S3
         run: |

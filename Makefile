@@ -58,8 +58,21 @@ update-cloudfront:
 # Full SSL workflow: request -> wait -> update CloudFront
 ssl-deploy:
 	@bash scripts/ssl_deploy.sh
-.PHONY: start stop
-start:
+
+# Preflight check for local dev
+.PHONY: check
+check:
+	@if [ ! -d venv ]; then \
+	  echo "[ERROR] Python venv missing. Run: python3 -m venv venv"; exit 1; \
+	fi
+	@if [ ! -f .env ]; then \
+	  echo "[ERROR] .env missing. Copy from .env.example and edit as needed."; exit 1; \
+	fi
+	@if [ ! -f server.py ]; then \
+	  echo "[ERROR] server.py missing. Are you in the project root?"; exit 1; \
+	fi
+
+start: check
 	bash scripts/start.sh
 
 stop:
