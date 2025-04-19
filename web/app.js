@@ -598,7 +598,8 @@
     if(boss){ctx.fillStyle=boss.color;ctx.beginPath();ctx.arc(boss.x,boss.y,boss.radius,0,2*Math.PI);ctx.fill();}
     // Draw avatars with arms/hands
     metricsList.forEach((m,i)=>{
-      const fx = m.faceCoords[0] * sw;
+      // Mirror avatar horizontally
+      const fx = canvasElement.width - (m.faceCoords[0] * sw);
       const fy = m.faceCoords[1] * sh;
       ctx.strokeStyle='white';ctx.lineWidth=2;
       ctx.beginPath();ctx.arc(fx,fy,50,0,2*Math.PI);ctx.stroke();
@@ -639,7 +640,7 @@
       for(let j=0;j<hl;j++){ctx.fillStyle='red';ctx.beginPath();ctx.arc(fx-20+ j*15, fy-70,5,0,2*Math.PI);ctx.fill();}
       // cartoon arms/hands
       const faceX=fx,faceY=fy;
-      const scaledHandPositions = handPositions.map(([hx, hy]) => [hx * canvasElement.width / faceCanvas.width, hy * canvasElement.height / faceCanvas.height]);
+      const scaledHandPositions = handPositions.map(([hx, hy]) => [canvasElement.width - (hx * canvasElement.width / faceCanvas.width), hy * canvasElement.height / faceCanvas.height]);
       const lw = scaledHandPositions.filter(h=>h[0]<faceX).sort((a,b)=>((a[0]-faceX)**2+(a[1]-faceY)**2)-((b[0]-faceX)**2+(b[1]-faceY)**2))[0];
       const rw = scaledHandPositions.filter(h=>h[0]>=faceX).sort((a,b)=>((a[0]-faceX)**2+(a[1]-faceY)**2)-((b[0]-faceX)**2+(b[1]-faceY)**2))[0];
       const shY=fy+15;
