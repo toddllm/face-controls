@@ -422,7 +422,6 @@
     // Update boss
     if(boss){
       if(boss.constructor && boss.constructor.name === 'MadackedaBoss' && madackedaImg.complete && madackedaImg.naturalWidth > 0) {
-        // Draw both the circle and the image overlayed, centered at boss position
         const size = boss.radius * 2;
         ctx.save();
         ctx.globalAlpha = 0.7;
@@ -504,7 +503,7 @@
     lasers.forEach(l=>{ctx.fillStyle='red';ctx.beginPath();ctx.arc(l.x,l.y,l.radius,0,2*Math.PI);ctx.fill();});
     fireballs.forEach(f=>{ctx.fillStyle='orange';ctx.beginPath();ctx.arc(f.x,f.y,f.radius,0,2*Math.PI);ctx.fill();});
     if(boss){ctx.fillStyle=boss.color;ctx.beginPath();ctx.arc(boss.x,boss.y,boss.radius,0,2*Math.PI);ctx.fill();}
-    // Draw avatars with arms/hands
+    // Draw avatars with cartoon arms/hands
     metricsList.forEach((m,i)=>{
       const vw = videoElement.videoWidth || 640;
       const vh = videoElement.videoHeight || 480;
