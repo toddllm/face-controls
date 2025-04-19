@@ -322,7 +322,8 @@
     const vh = videoElement.videoHeight || 480;
     const sw = canvasElement.width / vw;
     const sh = canvasElement.height / vh;
-    const centers = metricsList.map(m=>[m.faceCoords[0]*sw, m.faceCoords[1]*sh]);
+    // Mirror centers for all logic
+    const centers = metricsList.map(m=>[canvasElement.width - (m.faceCoords[0]*sw), m.faceCoords[1]*sh]);
     // Track previous face positions for shooting direction
     if (prevFaceCenters.length !== centers.length) prevFaceCenters = centers.map(c => [...c]);
     // Track last nonzero head movement direction
