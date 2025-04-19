@@ -453,7 +453,7 @@
         ctx.globalAlpha = 0.85;
         ctx.fillStyle = '#222';
         ctx.fillRect(x, y, barWidth, barHeight);
-        ctx.fillStyle = '#f44';
+        ctx.fillStyle = '#ff0000';
         ctx.fillRect(x, y, barWidth * (boss.health/bossMaxHealth), barHeight);
         ctx.strokeStyle = '#fff';
         ctx.lineWidth = 2;
