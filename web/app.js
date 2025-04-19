@@ -284,6 +284,8 @@
   let mouthCaptureEffects = [];
   // Add for hand/arm hit effect
   let handHitEffects = [];
+  // Track previous face positions for shooting direction
+  let prevFaceCenters = [];
   function animate(now=performance.now()) {
     if (paused) return;
     const dt = (now - lastTime) / 1000;
@@ -297,60 +299,14 @@
       creatures.push(new Type(0,0, canvasElement.width, canvasElement.height));
       lastSpawn = nowSec;
     }
-    // Voice-activated straight laser
-    if(audioAmplitude > 0.25) { // Threshold for loud sound
-      metricsList.forEach((metrics,i) => {
-        // Shoot a straight laser from face in direction of yaw
-        const yaw = metrics.yaw;
-        const pitch = metrics.pitch;
-        const dx = yaw * 100, dy = -pitch * 100;
-        const mag = Math.hypot(dx,dy)||1e-6;
-        const vx = dx/mag*600, vy = dy/mag*600;
-        const vw = videoElement.videoWidth || 640;
-        const vh = videoElement.videoHeight || 480;
-        const sw = canvasElement.width / vw;
-        const sh = canvasElement.height / vh;
-        const fx = metrics.faceCoords[0]*sw;
-        const fy = metrics.faceCoords[1]*sh;
-        lasers.push(new Laser(fx, fy, vx, vy));
-      });
-    }
-    // Blink lasers (keep as before)
-    metricsList.forEach((metrics,i) => {
-      if(metrics.blink) {
-        const yaw = metrics.yaw;
-        const pitch = metrics.pitch;
-        const dx = yaw * 100, dy = -pitch * 100;
-        const mag = Math.hypot(dx,dy)||1e-6;
-        const vx = dx/mag*400, vy = dy/mag*400;
-        const vw = videoElement.videoWidth || 640;
-        const vh = videoElement.videoHeight || 480;
-        const sw = canvasElement.width / vw;
-        const sh = canvasElement.height / vh;
-        const fx = metrics.faceCoords[0]*sw;
-        const fy = metrics.faceCoords[1]*sh;
-        const eyeOffX=50, eyeOffY=-30;
-        [{dx:-eyeOffX},{dx:eyeOffX}].forEach(o=>{
-          const lx=fx+o.dx, ly=fy+eyeOffY;
-          lasers.push(new Laser(lx,ly,vx,vy));
-        });
-      }
-    });
-    // Hand attacks (fireballs) and hand/arm damage
-    handPositions.forEach(([wx,wy])=>{
-      const scaledWx = wx * canvasElement.width / faceCanvas.width;
-      const scaledWy = wy * canvasElement.height / faceCanvas.height;
-      const cx=canvasElement.width/2, cy=canvasElement.height/2;
-      const dx= cx-scaledWx, dy= cy-scaledWy;
-      const mag=Math.hypot(dx,dy)||1e-6;
-      fireballs.push(new Fireball(scaledWx,scaledWy,dx/mag*300,dy/mag*300));
-    });
     // Precompute video/canvas scaling and centers for defeat logic
     const vw = videoElement.videoWidth || 640;
     const vh = videoElement.videoHeight || 480;
     const sw = canvasElement.width / vw;
     const sh = canvasElement.height / vh;
     const centers = metricsList.map(m=>[m.faceCoords[0]*sw, m.faceCoords[1]*sh]);
+    // Track previous face positions for shooting direction
+    if (prevFaceCenters.length !== centers.length) prevFaceCenters = centers.map(c => [...c]);
     // --- Robust monster defeat logic ---
     // 1. Mark creatures for removal and reason
     let defeatMap = new Map(); // c => reason
@@ -426,6 +382,33 @@
       state='boss_'+[ 'snow','fire','vortex','spinner','ram','tracker','artical','shadow','alienking','madackeda' ][waveIndex];
       waveKills=0;creatures.length=0;lasers.length=0;
     }
+    // Voice-activated straight laser (improved: use head movement direction)
+    if(audioAmplitude > 0.25) { // Threshold for loud sound
+      metricsList.forEach((metrics,i) => {
+        // Use head movement direction if significant, else fallback to yaw/pitch
+        const prev = prevFaceCenters[i] || [metrics.faceCoords[0]*sw, metrics.faceCoords[1]*sh];
+        const curr = centers[i];
+        const dxMove = curr[0] - prev[0];
+        const dyMove = curr[1] - prev[1];
+        const magMove = Math.hypot(dxMove, dyMove);
+        let dx, dy;
+        if (magMove > 2) { // If head moved enough pixels, use that direction
+          dx = dxMove;
+          dy = dyMove;
+        } else {
+          // Fallback to yaw/pitch
+          dx = metrics.yaw * 100;
+          dy = -metrics.pitch * 100;
+        }
+        const mag = Math.hypot(dx,dy)||1e-6;
+        const vx = dx/mag*600, vy = dy/mag*600;
+        const fx = curr[0];
+        const fy = curr[1];
+        lasers.push(new Laser(fx, fy, vx, vy));
+      });
+    }
+    // Update prevFaceCenters for next frame
+    prevFaceCenters = centers.map(c => [...c]);
     // Update boss
     if(boss){
       if(boss.constructor && boss.constructor.name === 'MadackedaBoss' && madackedaImg.complete && madackedaImg.naturalWidth > 0) {
@@ -442,10 +425,20 @@
       } else {
         ctx.fillStyle=boss.color;ctx.beginPath();ctx.arc(boss.x,boss.y,boss.radius,0,2*Math.PI);ctx.fill();
       }
-      // Boss-player collision detection
+      // Boss-player collision detection (after centers are up to date)
       centers.forEach((cen, i) => {
         if (invulTimers[i] <= 0) {
           const d = Math.hypot(boss.x - cen[0], boss.y - cen[1]);
+          // Debug: draw boss collision area
+          ctx.save();
+          ctx.globalAlpha = 0.2;
+          ctx.beginPath();
+          ctx.arc(boss.x, boss.y, boss.radius + 50, 0, 2 * Math.PI);
+          ctx.fillStyle = '#f00';
+          ctx.fill();
+          ctx.restore();
+          // Debug log
+          if (i === 0) console.log('Boss-player dist', d, 'threshold', boss.radius + 50);
           if (d < boss.radius + 50) { // 50 is the avatar radius
             playerLives[i] = (playerLives[i] || 3) - 1;
             invulTimers[i] = 2.0;
