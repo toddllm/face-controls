@@ -382,11 +382,19 @@
       state='boss_'+[ 'snow','fire','vortex','spinner','ram','tracker','artical','shadow','alienking','madackeda' ][waveIndex];
       waveKills=0;creatures.length=0;lasers.length=0;
     }
-    // Voice-activated straight laser (improved: use head direction)
+    // Voice-activated laser (from both eyes, using yaw/pitch for direction)
     if(audioAmplitude > 0.25) { // Threshold for loud sound
       metricsList.forEach((metrics,i) => {
         const prev = prevFaceCenters[i] || [metrics.faceCoords[0]*sw, metrics.faceCoords[1]*sh];
         const curr = centers[i];
+        // Get eye positions from face landmarks
+        const lm = results && results.multiFaceLandmarks && results.multiFaceLandmarks[i];
+        let leftEye = curr, rightEye = curr;
+        if (lm) {
+          leftEye = [lm[33].x * canvasElement.width, lm[33].y * canvasElement.height];
+          rightEye = [lm[263].x * canvasElement.width, lm[263].y * canvasElement.height];
+        }
+        // Direction: yaw/pitch (trial and error)
         let dx = metrics.yaw * 200;
         let dy = metrics.pitch * 200;
         if (Math.abs(dx) < 0.01 && Math.abs(dy) < 0.01) {
@@ -395,16 +403,23 @@
         }
         const mag = Math.hypot(dx,dy)||1e-6;
         const vx = dx/mag*600, vy = dy/mag*600;
-        const fx = curr[0];
-        const fy = curr[1];
-        lasers.push(new Laser(fx, fy, vx, vy));
+        lasers.push(new Laser(leftEye[0], leftEye[1], vx, vy));
+        lasers.push(new Laser(rightEye[0], rightEye[1], vx, vy));
       });
     }
-    // Blink-activated laser (same direction logic as above)
+    // Blink-activated laser (from both eyes, using yaw/pitch for direction)
     metricsList.forEach((metrics,i) => {
       if (metrics.blink) {
         const prev = prevFaceCenters[i] || [metrics.faceCoords[0]*sw, metrics.faceCoords[1]*sh];
         const curr = centers[i];
+        // Get eye positions from face landmarks
+        const lm = results && results.multiFaceLandmarks && results.multiFaceLandmarks[i];
+        let leftEye = curr, rightEye = curr;
+        if (lm) {
+          leftEye = [lm[33].x * canvasElement.width, lm[33].y * canvasElement.height];
+          rightEye = [lm[263].x * canvasElement.width, lm[263].y * canvasElement.height];
+        }
+        // Direction: yaw/pitch (trial and error)
         let dx = metrics.yaw * 200;
         let dy = metrics.pitch * 200;
         if (Math.abs(dx) < 0.01 && Math.abs(dy) < 0.01) {
@@ -413,9 +428,8 @@
         }
         const mag = Math.hypot(dx,dy)||1e-6;
         const vx = dx/mag*600, vy = dy/mag*600;
-        const fx = curr[0];
-        const fy = curr[1];
-        lasers.push(new Laser(fx, fy, vx, vy));
+        lasers.push(new Laser(leftEye[0], leftEye[1], vx, vy));
+        lasers.push(new Laser(rightEye[0], rightEye[1], vx, vy));
       }
     });
     // Update prevFaceCenters for next frame
@@ -542,13 +556,25 @@
       const fy = m.faceCoords[1] * sh;
       ctx.strokeStyle='white';ctx.lineWidth=2;
       ctx.beginPath();ctx.arc(fx,fy,50,0,2*Math.PI);ctx.stroke();
-      // Draw cartoon eyes
+      // Draw cartoon eyes (open/closed)
       ctx.save();
       ctx.fillStyle = 'black';
-      ctx.beginPath();
-      ctx.arc(fx-16, fy-10, 7, 0, 2*Math.PI); // left eye
-      ctx.arc(fx+16, fy-10, 7, 0, 2*Math.PI); // right eye
-      ctx.fill();
+      if (m.eyes_closed) {
+        // Draw closed eyes as lines
+        ctx.lineWidth = 4;
+        ctx.beginPath();
+        ctx.moveTo(fx-23, fy-10);
+        ctx.lineTo(fx-9, fy-10);
+        ctx.moveTo(fx+9, fy-10);
+        ctx.lineTo(fx+23, fy-10);
+        ctx.stroke();
+      } else {
+        // Draw open eyes as circles
+        ctx.beginPath();
+        ctx.arc(fx-16, fy-10, 7, 0, 2*Math.PI); // left eye
+        ctx.arc(fx+16, fy-10, 7, 0, 2*Math.PI); // right eye
+        ctx.fill();
+      }
       ctx.restore();
       // Draw mouth on avatar
       const mouthW = 36 + 120 * Math.min(1, m.mouth_open_ratio); // width grows with mouth open
