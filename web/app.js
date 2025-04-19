@@ -120,6 +120,8 @@
   const killTargets = [20,30,40,50,60,70,80,90,100,120];
   let playerLives = [];
   let invulTimers = [];
+  let paused = false;
+  let pauseOverlay = null;
 
   // Initialize state tracking for face blinks
   let prevEyesClosed = [];
@@ -276,24 +278,44 @@
     }
     audioAmplitude = Math.sqrt(sum / dataArray.length) / 128;
   }
+  // Add for boss health bar
+  let bossMaxHealth = 0;
+  // Add for mouth capture effect
+  let mouthCaptureEffects = [];
+  // Add for hand/arm hit effect
+  let handHitEffects = [];
   function animate(now=performance.now()) {
+    if (paused) return;
     const dt = (now - lastTime) / 1000;
     lastTime = now;
-    // Mic level
     getMicData();
-    // Time for spawn
     const nowSec = performance.now()/1000;
-    // Spawn creatures only in minions state
     if(state === 'minions' && nowSec - lastSpawn > spawnInterval) {
       const r = Math.random();
-      const types = [
-        Creature, Snowie, FireSpinner, Ghost, Skeleton, Caster, Dragon
-      ];
+      const types = [Creature, Snowie, FireSpinner, Ghost, Skeleton, Caster, Dragon];
       const Type = types[Math.floor(r*types.length)];
       creatures.push(new Type(0,0, canvasElement.width, canvasElement.height));
       lastSpawn = nowSec;
     }
-    // Blink lasers
+    // Voice-activated straight laser
+    if(audioAmplitude > 0.25) { // Threshold for loud sound
+      metricsList.forEach((metrics,i) => {
+        // Shoot a straight laser from face in direction of yaw
+        const yaw = metrics.yaw;
+        const pitch = metrics.pitch;
+        const dx = yaw * 100, dy = -pitch * 100;
+        const mag = Math.hypot(dx,dy)||1e-6;
+        const vx = dx/mag*600, vy = dy/mag*600;
+        const vw = videoElement.videoWidth || 640;
+        const vh = videoElement.videoHeight || 480;
+        const sw = canvasElement.width / vw;
+        const sh = canvasElement.height / vh;
+        const fx = metrics.faceCoords[0]*sw;
+        const fy = metrics.faceCoords[1]*sh;
+        lasers.push(new Laser(fx, fy, vx, vy));
+      });
+    }
+    // Blink lasers (keep as before)
     metricsList.forEach((metrics,i) => {
       if(metrics.blink) {
         const yaw = metrics.yaw;
@@ -301,7 +323,6 @@
         const dx = yaw * 100, dy = -pitch * 100;
         const mag = Math.hypot(dx,dy)||1e-6;
         const vx = dx/mag*400, vy = dy/mag*400;
-        // scale face coords
         const vw = videoElement.videoWidth || 640;
         const vh = videoElement.videoHeight || 480;
         const sw = canvasElement.width / vw;
@@ -315,9 +336,8 @@
         });
       }
     });
-    // Hand attacks
+    // Hand attacks (fireballs) and hand/arm damage
     handPositions.forEach(([wx,wy])=>{
-      // Apply scaling to hand positions
       const scaledWx = wx * canvasElement.width / faceCanvas.width;
       const scaledWy = wy * canvasElement.height / faceCanvas.height;
       const cx=canvasElement.width/2, cy=canvasElement.height/2;
@@ -325,17 +345,29 @@
       const mag=Math.hypot(dx,dy)||1e-6;
       fireballs.push(new Fireball(scaledWx,scaledWy,dx/mag*300,dy/mag*300));
     });
+    // Hand/arm damage: if hand is close to a creature or boss, deal damage
+    handPositions.forEach(([wx,wy])=>{
+      const scaledWx = wx * canvasElement.width / faceCanvas.width;
+      const scaledWy = wy * canvasElement.height / faceCanvas.height;
+      creatures.forEach((c,ci)=>{
+        if(Math.hypot(c.x-scaledWx,c.y-scaledWy)<c.radius+20) {
+          handHitEffects.push({x:c.x,y:c.y,t:0});
+          creatures.splice(ci,1);
+        }
+      });
+      if(boss && Math.hypot(boss.x-scaledWx,boss.y-scaledWy)<boss.radius+30) {
+        handHitEffects.push({x:boss.x,y:boss.y,t:0});
+        boss.health -= 1;
+      }
+    });
     // Update creatures
     creatures.forEach(c=>c.update(dt,canvasElement.width/2,canvasElement.height/2));
-    
     // Collision: creatures with avatars
-    // Get scaled face coordinates using the proper scaling factors
     const vw = videoElement.videoWidth || 640;
     const vh = videoElement.videoHeight || 480;
     const sw = canvasElement.width / vw;
     const sh = canvasElement.height / vh;
     const centers = metricsList.map(m=>[m.faceCoords[0]*sw, m.faceCoords[1]*sh]);
-    
     let newCreatures=[];
     creatures.forEach(c=>{
       let hit=false;
@@ -352,34 +384,76 @@
       });
       if(!hit) newCreatures.push(c);
     }); creatures.splice(0,creatures.length,...newCreatures);
-    
-    // Trap creatures by mouth
+    // Trap creatures by mouth (improved effect)
     let rem=[];
     creatures.forEach(c=>{
       let trapped=false;
       centers.forEach((cen,i)=>{
         if(!trapped && metricsList[i].mouth_open_ratio>0.03){
-          const d=Math.hypot(c.x-cen[0],c.y-cen[1]);
-          if(d<30){waveKills++; trapped=true;}
+          // Use a larger capture radius and visualize it
+          const mouthRadius = 60; // Increased for easier capture
+          const d=Math.hypot(c.x-cen[0],c.y-(cen[1]+30)); // mouth is below face center
+          // Draw debug capture area
+          ctx.save();
+          ctx.globalAlpha = 0.18;
+          ctx.beginPath();
+          ctx.arc(cen[0], cen[1]+30, mouthRadius, 0, 2*Math.PI);
+          ctx.fillStyle = '#0ff';
+          ctx.fill();
+          ctx.restore();
+          if(d<mouthRadius){
+            waveKills++;
+            mouthCaptureEffects.push({x:c.x,y:c.y,t:0});
+            trapped=true;
+          }
         }
       });
       if(!trapped) rem.push(c);
     }); creatures.splice(0,creatures.length,...rem);
-    
     // Transition to boss
     if(state==='minions' && waveKills>=killTargets[waveIndex]){
       const [bx,by]=centers[0]||[canvasElement.width/2,canvasElement.height/2];
       const bossesArr=[SnowKing,FlameWarden,VortexBoss,SpinnerBoss,RamBoss,TrackerBoss,ArticalBoss,ShadowBoss,AlienKingBoss,MadackedaBoss];
       boss=new bossesArr[waveIndex](bx,by);
+      bossMaxHealth = boss.health;
       state='boss_'+[ 'snow','fire','vortex','spinner','ram','tracker','artical','shadow','alienking','madackeda' ][waveIndex];
       waveKills=0;creatures.length=0;lasers.length=0;
     }
     // Update boss
-    if(boss){ boss.update(dt,canvasElement.width/2,canvasElement.height/2); if(boss.health<=0){waveIndex++;state='minions';boss=null;} }
+    if(boss){
+      if(boss.constructor && boss.constructor.name === 'MadackedaBoss' && madackedaImg.complete && madackedaImg.naturalWidth > 0) {
+        // Draw both the circle and the image overlayed, centered at boss position
+        const size = boss.radius * 2;
+        ctx.save();
+        ctx.globalAlpha = 0.7;
+        ctx.fillStyle = boss.color;
+        ctx.beginPath();
+        ctx.arc(boss.x, boss.y, boss.radius, 0, 2 * Math.PI);
+        ctx.fill();
+        ctx.restore();
+        ctx.drawImage(madackedaImg, boss.x - boss.radius, boss.y - boss.radius, size, size);
+      } else {
+        ctx.fillStyle=boss.color;ctx.beginPath();ctx.arc(boss.x,boss.y,boss.radius,0,2*Math.PI);ctx.fill();
+      }
+      // Draw boss health bar
+      if(bossMaxHealth>0) {
+        const barWidth = 120, barHeight = 16;
+        const x = boss.x - barWidth/2, y = boss.y - boss.radius - 30;
+        ctx.save();
+        ctx.globalAlpha = 0.85;
+        ctx.fillStyle = '#222';
+        ctx.fillRect(x, y, barWidth, barHeight);
+        ctx.fillStyle = '#f44';
+        ctx.fillRect(x, y, barWidth * (boss.health/bossMaxHealth), barHeight);
+        ctx.strokeStyle = '#fff';
+        ctx.lineWidth = 2;
+        ctx.strokeRect(x, y, barWidth, barHeight);
+        ctx.restore();
+      }
+    }
     // Update lasers/fireballs
     lasers.forEach(l=>l.update(dt));
     fireballs.forEach(f=>f.update(dt));
-
     // Collision: lasers hitting creatures
     let remainingCreatures = [];
     creatures.forEach(c => {
@@ -393,47 +467,118 @@
       if (!killed) remainingCreatures.push(c);
     });
     creatures.splice(0, creatures.length, ...remainingCreatures);
-
     // Remove inactive lasers and fireballs
     lasers.splice(0, lasers.length, ...lasers.filter(l => l.active));
     fireballs.splice(0, fireballs.length, ...fireballs.filter(f => f.active));
-    
     // Reduce invulnerability timers
     invulTimers.forEach((v,i)=>invulTimers[i]=Math.max(0,v-dt));
     // Render
     ctx.clearRect(0,0,canvasElement.width,canvasElement.height);
+    // Draw mouth capture effects
+    mouthCaptureEffects = mouthCaptureEffects.filter(e=>e.t<0.4);
+    mouthCaptureEffects.forEach(e=>{
+      e.t+=dt;
+      ctx.save();
+      ctx.globalAlpha = 1-e.t/0.4;
+      ctx.strokeStyle = '#0ff';
+      ctx.lineWidth = 6;
+      ctx.beginPath();
+      ctx.arc(e.x, e.y, 30+e.t*30, 0, 2*Math.PI);
+      ctx.stroke();
+      ctx.restore();
+    });
+    // Draw hand hit effects
+    handHitEffects = handHitEffects.filter(e=>e.t<0.3);
+    handHitEffects.forEach(e=>{
+      e.t+=dt;
+      ctx.save();
+      ctx.globalAlpha = 1-e.t/0.3;
+      ctx.strokeStyle = '#ff0';
+      ctx.lineWidth = 8;
+      ctx.beginPath();
+      ctx.arc(e.x, e.y, 25+e.t*20, 0, 2*Math.PI);
+      ctx.stroke();
+      ctx.restore();
+    });
     creatures.forEach(c=>{ctx.fillStyle=c.color;ctx.beginPath();ctx.arc(c.x,c.y,c.radius,0,2*Math.PI);ctx.fill();});
     lasers.forEach(l=>{ctx.fillStyle='red';ctx.beginPath();ctx.arc(l.x,l.y,l.radius,0,2*Math.PI);ctx.fill();});
     fireballs.forEach(f=>{ctx.fillStyle='orange';ctx.beginPath();ctx.arc(f.x,f.y,f.radius,0,2*Math.PI);ctx.fill();});
     if(boss){ctx.fillStyle=boss.color;ctx.beginPath();ctx.arc(boss.x,boss.y,boss.radius,0,2*Math.PI);ctx.fill();}
-    // Draw avatars
+    // Draw avatars with arms/hands
     metricsList.forEach((m,i)=>{
-      // Scale face coordinates properly
       const vw = videoElement.videoWidth || 640;
       const vh = videoElement.videoHeight || 480;
       const sw = canvasElement.width / vw;
       const sh = canvasElement.height / vh;
       const fx = m.faceCoords[0] * sw;
       const fy = m.faceCoords[1] * sh;
-      
       ctx.strokeStyle='white';ctx.lineWidth=2;
       ctx.beginPath();ctx.arc(fx,fy,50,0,2*Math.PI);ctx.stroke();
+      // Draw mouth on avatar
+      const mouthW = 36 + 120 * Math.min(1, m.mouth_open_ratio); // width grows with mouth open
+      const mouthH = 12 + 60 * Math.min(1, m.mouth_open_ratio);  // height grows with mouth open
+      ctx.save();
+      ctx.translate(fx, fy+30);
+      ctx.beginPath();
+      ctx.ellipse(0, 0, mouthW/2, mouthH/2, 0, 0, 2*Math.PI);
+      ctx.fillStyle = '#a00';
+      ctx.globalAlpha = 0.85;
+      ctx.fill();
+      ctx.restore();
       // hearts
       const hl=playerLives[i]||3;
       for(let j=0;j<hl;j++){ctx.fillStyle='red';ctx.beginPath();ctx.arc(fx-20+ j*15, fy-70,5,0,2*Math.PI);ctx.fill();}
-      // arms
+      // cartoon arms/hands
       const faceX=fx,faceY=fy;
-      // Scale hand positions to game canvas
-      const scaledHandPositions = handPositions.map(([hx, hy]) => [
-        hx * canvasElement.width / faceCanvas.width,
-        hy * canvasElement.height / faceCanvas.height
-      ]);
-      
+      const scaledHandPositions = handPositions.map(([hx, hy]) => [hx * canvasElement.width / faceCanvas.width, hy * canvasElement.height / faceCanvas.height]);
       const lw = scaledHandPositions.filter(h=>h[0]<faceX).sort((a,b)=>((a[0]-faceX)**2+(a[1]-faceY)**2)-((b[0]-faceX)**2+(b[1]-faceY)**2))[0];
       const rw = scaledHandPositions.filter(h=>h[0]>=faceX).sort((a,b)=>((a[0]-faceX)**2+(a[1]-faceY)**2)-((b[0]-faceX)**2+(b[1]-faceY)**2))[0];
       const shY=fy+15;
-      if(lw){ctx.strokeStyle='gray';ctx.lineWidth=4;ctx.beginPath();ctx.moveTo(faceX-30,shY);ctx.lineTo(lw[0],lw[1]);ctx.stroke();}
-      if(rw){ctx.strokeStyle='gray';ctx.lineWidth=4;ctx.beginPath();ctx.moveTo(faceX+30,shY);ctx.lineTo(rw[0],rw[1]);ctx.stroke();}
+      // cartoon skin color
+      const skin = '#fcd7b6';
+      // left arm/hand
+      if(lw){
+        // connect from left side of face
+        const armStartX = faceX-38, armStartY = shY;
+        ctx.save();
+        ctx.strokeStyle=skin;
+        ctx.lineWidth=18;
+        ctx.lineCap='round';
+        ctx.beginPath();
+        ctx.moveTo(armStartX,armStartY);
+        ctx.lineTo(lw[0],lw[1]);
+        ctx.stroke();
+        // hand
+        ctx.beginPath();
+        ctx.arc(lw[0],lw[1],22,0,2*Math.PI);
+        ctx.fillStyle=skin;
+        ctx.fill();
+        ctx.lineWidth=4;
+        ctx.strokeStyle='#e2b48c';
+        ctx.stroke();
+        ctx.restore();
+      }
+      // right arm/hand
+      if(rw){
+        const armStartX = faceX+38, armStartY = shY;
+        ctx.save();
+        ctx.strokeStyle=skin;
+        ctx.lineWidth=18;
+        ctx.lineCap='round';
+        ctx.beginPath();
+        ctx.moveTo(armStartX,armStartY);
+        ctx.lineTo(rw[0],rw[1]);
+        ctx.stroke();
+        // hand
+        ctx.beginPath();
+        ctx.arc(rw[0],rw[1],22,0,2*Math.PI);
+        ctx.fillStyle=skin;
+        ctx.fill();
+        ctx.lineWidth=4;
+        ctx.strokeStyle='#e2b48c';
+        ctx.stroke();
+        ctx.restore();
+      }
     });
     requestAnimationFrame(animate);
   }
@@ -522,4 +667,78 @@
     }
     faceCtx.restore();
   }
+
+  // Load Madackeda boss image
+  const madackedaImg = new window.Image();
+  madackedaImg.src = 'images/Madackeda.png';
+
+  // Add pause button to UI
+  function createPauseButton() {
+    let btn = document.createElement('button');
+    btn.id = 'pauseButton';
+    btn.textContent = 'Pause';
+    btn.style.position = 'fixed';
+    btn.style.top = '16px';
+    btn.style.right = '16px';
+    btn.style.zIndex = 1000;
+    btn.style.fontSize = '18px';
+    btn.style.padding = '8px 20px';
+    btn.style.background = '#333';
+    btn.style.color = '#fff';
+    btn.style.border = 'none';
+    btn.style.borderRadius = '8px';
+    btn.style.cursor = 'pointer';
+    btn.onclick = () => togglePause();
+    document.body.appendChild(btn);
+  }
+  function createPauseOverlay() {
+    pauseOverlay = document.createElement('div');
+    pauseOverlay.id = 'pauseOverlay';
+    pauseOverlay.textContent = 'Paused';
+    pauseOverlay.style.position = 'fixed';
+    pauseOverlay.style.top = 0;
+    pauseOverlay.style.left = 0;
+    pauseOverlay.style.width = '100vw';
+    pauseOverlay.style.height = '100vh';
+    pauseOverlay.style.background = 'rgba(0,0,0,0.5)';
+    pauseOverlay.style.color = '#fff';
+    pauseOverlay.style.display = 'flex';
+    pauseOverlay.style.alignItems = 'center';
+    pauseOverlay.style.justifyContent = 'center';
+    pauseOverlay.style.fontSize = '48px';
+    pauseOverlay.style.zIndex = 2000;
+    pauseOverlay.style.display = 'none';
+    document.body.appendChild(pauseOverlay);
+    // Add unpause button
+    let unpauseBtn = document.createElement('button');
+    unpauseBtn.textContent = 'Unpause';
+    unpauseBtn.style.fontSize = '24px';
+    unpauseBtn.style.marginTop = '32px';
+    unpauseBtn.style.padding = '12px 32px';
+    unpauseBtn.style.background = '#333';
+    unpauseBtn.style.color = '#fff';
+    unpauseBtn.style.border = 'none';
+    unpauseBtn.style.borderRadius = '8px';
+    unpauseBtn.style.cursor = 'pointer';
+    unpauseBtn.onclick = () => togglePause();
+    pauseOverlay.appendChild(document.createElement('br'));
+    pauseOverlay.appendChild(unpauseBtn);
+  }
+  function togglePause() {
+    paused = !paused;
+    if (paused) {
+      pauseOverlay.style.display = 'flex';
+    } else {
+      pauseOverlay.style.display = 'none';
+      lastTime = performance.now();
+      requestAnimationFrame(animate);
+    }
+  }
+  window.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      togglePause();
+    }
+  });
+  createPauseButton();
+  createPauseOverlay();
 })();
