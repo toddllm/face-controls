@@ -353,6 +353,7 @@
         if(Math.hypot(c.x-scaledWx,c.y-scaledWy)<c.radius+20) {
           handHitEffects.push({x:c.x,y:c.y,t:0});
           creatures.splice(ci,1);
+          waveKills++;
         }
       });
       if(boss && Math.hypot(boss.x-scaledWx,boss.y-scaledWy)<boss.radius+30) {
@@ -468,6 +469,7 @@
         }
       });
       if (!killed) remainingCreatures.push(c);
+      else waveKills++;
     });
     creatures.splice(0, creatures.length, ...remainingCreatures);
     // Remove inactive lasers and fireballs
