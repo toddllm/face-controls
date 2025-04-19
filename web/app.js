@@ -302,6 +302,8 @@
   let prevFaceCenters = [];
   // Global to store latest face landmarks for use in animation loop
   let latestFaceLandmarks = [];
+  // Track last nonzero head movement direction for each player
+  let lastHeadDir = [];
   function animate(now=performance.now()) {
     if (paused) return;
     const dt = (now - lastTime) / 1000;
@@ -323,6 +325,17 @@
     const centers = metricsList.map(m=>[m.faceCoords[0]*sw, m.faceCoords[1]*sh]);
     // Track previous face positions for shooting direction
     if (prevFaceCenters.length !== centers.length) prevFaceCenters = centers.map(c => [...c]);
+    // Track last nonzero head movement direction
+    if (lastHeadDir.length !== centers.length) lastHeadDir = centers.map(_ => [0, -1]);
+    centers.forEach((curr, i) => {
+      const prev = prevFaceCenters[i] || curr;
+      const dx = curr[0] - prev[0];
+      const dy = curr[1] - prev[1];
+      if (Math.abs(dx) > 0.5 || Math.abs(dy) > 0.5) {
+        // Update last head direction if significant movement
+        lastHeadDir[i] = [dx, dy];
+      }
+    });
     // --- Robust monster defeat logic ---
     // 1. Mark creatures for removal and reason
     let defeatMap = new Map(); // c => reason
@@ -423,7 +436,7 @@
       state='boss_'+[ 'snow','fire','vortex','spinner','ram','tracker','artical','shadow','alienking','madackeda' ][waveIndex];
       waveKills=0;creatures.length=0;lasers.length=0;
     }
-    // Voice-activated laser (from both eyes, using yaw/pitch for direction)
+    // Voice-activated laser (from both eyes, using head movement direction)
     if(audioAmplitude > 0.25) { // Threshold for loud sound
       metricsList.forEach((metrics,i) => {
         const curr = centers[i];
@@ -432,9 +445,8 @@
         // Use avatar's drawn eye positions
         const leftEye = [fx-16, fy-10];
         const rightEye = [fx+16, fy-10];
-        // Direction: yaw/pitch (trial and error)
-        let dx = metrics.yaw * 200;
-        let dy = metrics.pitch * 200;
+        // Use last head movement direction
+        let [dx, dy] = lastHeadDir[i] || [0, -1];
         if (Math.abs(dx) < 0.01 && Math.abs(dy) < 0.01) {
           dx = 0;
           dy = -1;
@@ -445,7 +457,7 @@
         lasers.push(new Laser(rightEye[0], rightEye[1], vx, vy));
       });
     }
-    // Blink-activated laser (from both eyes, using yaw/pitch for direction)
+    // Blink-activated laser (from both eyes, using head movement direction)
     metricsList.forEach((metrics,i) => {
       if (metrics.blink) {
         const curr = centers[i];
@@ -454,9 +466,8 @@
         // Use avatar's drawn eye positions
         const leftEye = [fx-16, fy-10];
         const rightEye = [fx+16, fy-10];
-        // Direction: yaw/pitch (trial and error)
-        let dx = metrics.yaw * 200;
-        let dy = metrics.pitch * 200;
+        // Use last head movement direction
+        let [dx, dy] = lastHeadDir[i] || [0, -1];
         if (Math.abs(dx) < 0.01 && Math.abs(dy) < 0.01) {
           dx = 0;
           dy = -1;
