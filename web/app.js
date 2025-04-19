@@ -335,6 +335,12 @@
           defeatMap.set(c, 'laser');
         }
       });
+      // Boss collision detection
+      if (boss && l.active && Math.hypot(boss.x - l.x, boss.y - l.y) < boss.radius + l.radius) {
+        l.active = false;
+        boss.health -= 1;
+        console.log('Boss hit! Health:', boss.health);
+      }
     });
     // Mouth capture defeat
     creatures.forEach(c=>{
@@ -387,14 +393,19 @@
     // Voice-activated laser (from both eyes, using yaw/pitch for direction)
     if(audioAmplitude > 0.25) { // Threshold for loud sound
       metricsList.forEach((metrics,i) => {
-        const prev = prevFaceCenters[i] || [metrics.faceCoords[0]*sw, metrics.faceCoords[1]*sh];
         const curr = centers[i];
-        // Get eye positions from latestFaceLandmarks
+        // Get iris center positions if available
         const lm = latestFaceLandmarks && latestFaceLandmarks[i];
         let leftEye = curr, rightEye = curr;
         if (lm) {
-          leftEye = [lm[33].x * canvasElement.width, lm[33].y * canvasElement.height];
-          rightEye = [lm[263].x * canvasElement.width, lm[263].y * canvasElement.height];
+          if (lm[468] && lm[473]) {
+            leftEye = [lm[468].x * canvasElement.width, lm[468].y * canvasElement.height];
+            rightEye = [lm[473].x * canvasElement.width, lm[473].y * canvasElement.height];
+          } else {
+            // Fallback: average eye landmarks
+            leftEye = [(lm[33].x + lm[133].x)/2 * canvasElement.width, (lm[33].y + lm[133].y)/2 * canvasElement.height];
+            rightEye = [(lm[263].x + lm[362].x)/2 * canvasElement.width, (lm[263].y + lm[362].y)/2 * canvasElement.height];
+          }
         }
         // Direction: yaw/pitch (trial and error)
         let dx = metrics.yaw * 200;
@@ -412,14 +423,19 @@
     // Blink-activated laser (from both eyes, using yaw/pitch for direction)
     metricsList.forEach((metrics,i) => {
       if (metrics.blink) {
-        const prev = prevFaceCenters[i] || [metrics.faceCoords[0]*sw, metrics.faceCoords[1]*sh];
         const curr = centers[i];
-        // Get eye positions from latestFaceLandmarks
+        // Get iris center positions if available
         const lm = latestFaceLandmarks && latestFaceLandmarks[i];
         let leftEye = curr, rightEye = curr;
         if (lm) {
-          leftEye = [lm[33].x * canvasElement.width, lm[33].y * canvasElement.height];
-          rightEye = [lm[263].x * canvasElement.width, lm[263].y * canvasElement.height];
+          if (lm[468] && lm[473]) {
+            leftEye = [lm[468].x * canvasElement.width, lm[468].y * canvasElement.height];
+            rightEye = [lm[473].x * canvasElement.width, lm[473].y * canvasElement.height];
+          } else {
+            // Fallback: average eye landmarks
+            leftEye = [(lm[33].x + lm[133].x)/2 * canvasElement.width, (lm[33].y + lm[133].y)/2 * canvasElement.height];
+            rightEye = [(lm[263].x + lm[362].x)/2 * canvasElement.width, (lm[263].y + lm[362].y)/2 * canvasElement.height];
+          }
         }
         // Direction: yaw/pitch (trial and error)
         let dx = metrics.yaw * 200;
