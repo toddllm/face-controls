@@ -438,7 +438,10 @@
       // Draw boss health bar
       if(bossMaxHealth>0) {
         const barWidth = 120, barHeight = 16;
-        const x = boss.x - barWidth/2, y = boss.y - boss.radius - 30;
+        const x = boss.x - barWidth/2;
+        let y = boss.y - boss.radius - 30;
+        y = Math.max(10, y); // Clamp to at least 10px from the top
+        console.log('Drawing boss health bar at', {x, y, health: boss.health, max: bossMaxHealth, bossX: boss.x, bossY: boss.y});
         ctx.save();
         ctx.globalAlpha = 0.85;
         ctx.fillStyle = '#222';
