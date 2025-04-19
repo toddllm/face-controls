@@ -69,8 +69,23 @@
   class Fireball extends Laser { constructor(x,y,vx,vy){ super(x,y,vx,vy); this.color='orange'; this.radius=8; }}
   class PurpleLaser extends Laser { constructor(x,y,vx,vy){ super(x,y,vx,vy); this.color='purple'; this.radius=6; }}
   class BaseBoss {
-    constructor(cx,cy){ this.x=cx; this.y=cy-150; this.radius=40; this.health=20; this.speed=60; this.color='purple'; this.angle=0; }
-    update(dt,tx,ty){ this.angle+=dt; this.x=tx+Math.cos(this.angle)*150; this.y=ty+Math.sin(this.angle)*80; }
+    constructor(cx,cy){ this.x=cx; this.y=cy-150; this.radius=40; this.health=20; this.speed=60; this.color='purple'; this.angle=0;
+      this.minionTimer = 0;
+      this.minionInterval = 2.0; // seconds
+    }
+    update(dt,tx,ty){
+      this.angle+=dt;
+      this.x=tx+Math.cos(this.angle)*150;
+      this.y=ty+Math.sin(this.angle)*80;
+      // Minion spawn logic (skip for Madackeda)
+      if (this.constructor.name !== 'MadackedaBoss') {
+        this.minionTimer += dt;
+        if (this.minionTimer >= this.minionInterval) {
+          spawnRandomMinion(this.x, this.y, canvasElement.width, canvasElement.height);
+          this.minionTimer = 0;
+        }
+      }
+    }
   }
   // Boss subclasses
   class SnowKing extends BaseBoss { constructor(cx,cy){ super(cx,cy); this.health=30; this.color='lightblue'; this.spawn=3; this.timer=0; }
@@ -827,4 +842,11 @@
   });
   createPauseButton();
   createPauseOverlay();
+
+  // Helper function to spawn a random minion at (x, y)
+  function spawnRandomMinion(x, y, sw, sh) {
+    const minionTypes = [Creature, Snowie, FireSpinner, Ghost, Skeleton, Caster, Dragon];
+    const Type = minionTypes[Math.floor(Math.random() * minionTypes.length)];
+    creatures.push(new Type(x, y, sw, sh));
+  }
 })();
