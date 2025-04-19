@@ -442,24 +442,6 @@
       } else {
         ctx.fillStyle=boss.color;ctx.beginPath();ctx.arc(boss.x,boss.y,boss.radius,0,2*Math.PI);ctx.fill();
       }
-      // Draw boss health bar
-      if(bossMaxHealth>0) {
-        const barWidth = 120, barHeight = 16;
-        const x = boss.x - barWidth/2;
-        let y = boss.y - boss.radius - 30;
-        y = Math.max(10, y); // Clamp to at least 10px from the top
-        console.log('Drawing boss health bar at', {x, y, health: boss.health, max: bossMaxHealth, bossX: boss.x, bossY: boss.y});
-        ctx.save();
-        ctx.globalAlpha = 0.85;
-        ctx.fillStyle = '#222';
-        ctx.fillRect(x, y, barWidth, barHeight);
-        ctx.fillStyle = '#ff0000';
-        ctx.fillRect(x, y, barWidth * (boss.health/bossMaxHealth), barHeight);
-        ctx.strokeStyle = '#fff';
-        ctx.lineWidth = 2;
-        ctx.strokeRect(x, y, barWidth, barHeight);
-        ctx.restore();
-      }
     }
     // Update lasers/fireballs
     lasers.forEach(l=>l.update(dt));
@@ -483,6 +465,28 @@
       ctx.fillText(`Monsters defeated: ${waveKills} / ${killTargets[waveIndex]}`, overlayLeft, 48);
     } else if (boss) {
       ctx.fillText(`Boss: ${boss.constructor.name.replace('Boss','')}`, overlayLeft, 48);
+      // Draw boss health bar at top right, below the boss label
+      if(bossMaxHealth>0) {
+        const barWidth = 220, barHeight = 22;
+        const x = overlayLeft;
+        const y = 80;
+        ctx.save();
+        ctx.globalAlpha = 0.95;
+        ctx.fillStyle = '#222';
+        ctx.fillRect(x, y, barWidth, barHeight);
+        ctx.fillStyle = '#ff0000';
+        ctx.fillRect(x, y, barWidth * (boss.health/bossMaxHealth), barHeight);
+        ctx.strokeStyle = '#fff';
+        ctx.lineWidth = 3;
+        ctx.strokeRect(x, y, barWidth, barHeight);
+        ctx.font = 'bold 18px Arial';
+        ctx.fillStyle = '#fff';
+        ctx.globalAlpha = 1.0;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(`${boss.health} / ${bossMaxHealth}`, x + barWidth/2, y + barHeight/2);
+        ctx.restore();
+      }
     }
     ctx.restore();
     // Draw mouth capture effects
