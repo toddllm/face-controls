@@ -422,6 +422,7 @@
     // Update boss
     if(boss){
       if(boss.constructor && boss.constructor.name === 'MadackedaBoss' && madackedaImg.complete && madackedaImg.naturalWidth > 0) {
+        // Draw both the circle and the image overlayed, centered at boss position
         const size = boss.radius * 2;
         ctx.save();
         ctx.globalAlpha = 0.7;
@@ -473,6 +474,25 @@
     invulTimers.forEach((v,i)=>invulTimers[i]=Math.max(0,v-dt));
     // Render
     ctx.clearRect(0,0,canvasElement.width,canvasElement.height);
+    // Draw level and monster counter to the right of the video overlay
+    let overlayLeft = 340; // fallback if faceContainer not found
+    if (faceContainer) {
+      const rect = faceContainer.getBoundingClientRect();
+      overlayLeft = rect.right + 20;
+    }
+    ctx.save();
+    ctx.font = 'bold 22px Arial';
+    ctx.fillStyle = '#fff';
+    ctx.globalAlpha = 0.92;
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'top';
+    ctx.fillText(`Level: ${waveIndex+1}`, overlayLeft, 18);
+    if(state === 'minions') {
+      ctx.fillText(`Monsters defeated: ${waveKills} / ${killTargets[waveIndex]}`, overlayLeft, 48);
+    } else if (boss) {
+      ctx.fillText(`Boss: ${boss.constructor.name.replace('Boss','')}`, overlayLeft, 48);
+    }
+    ctx.restore();
     // Draw mouth capture effects
     mouthCaptureEffects = mouthCaptureEffects.filter(e=>e.t<0.4);
     mouthCaptureEffects.forEach(e=>{
@@ -503,7 +523,7 @@
     lasers.forEach(l=>{ctx.fillStyle='red';ctx.beginPath();ctx.arc(l.x,l.y,l.radius,0,2*Math.PI);ctx.fill();});
     fireballs.forEach(f=>{ctx.fillStyle='orange';ctx.beginPath();ctx.arc(f.x,f.y,f.radius,0,2*Math.PI);ctx.fill();});
     if(boss){ctx.fillStyle=boss.color;ctx.beginPath();ctx.arc(boss.x,boss.y,boss.radius,0,2*Math.PI);ctx.fill();}
-    // Draw avatars with cartoon arms/hands
+    // Draw avatars with arms/hands
     metricsList.forEach((m,i)=>{
       const vw = videoElement.videoWidth || 640;
       const vh = videoElement.videoHeight || 480;
