@@ -77,43 +77,42 @@
       this.angle+=dt;
       this.x=tx+Math.cos(this.angle)*150;
       this.y=ty+Math.sin(this.angle)*80;
-      // Minion spawn logic (skip for Madackeda)
-      if (this.constructor.name !== 'MadackedaBoss') {
-        this.minionTimer += dt;
-        if (this.minionTimer >= this.minionInterval) {
-          spawnRandomMinion(this.x, this.y, canvasElement.width, canvasElement.height);
-          this.minionTimer = 0;
-        }
+    }
+    spawnMinions(dt) {
+      this.minionTimer += dt;
+      if (this.minionTimer >= this.minionInterval) {
+        spawnRandomMinion(this.x, this.y, canvasElement.width, canvasElement.height);
+        this.minionTimer = 0;
       }
     }
   }
   // Boss subclasses
   class SnowKing extends BaseBoss { constructor(cx,cy){ super(cx,cy); this.health=30; this.color='lightblue'; this.spawn=3; this.timer=0; }
-    update(dt,tx,ty){ super.update(dt,tx,ty); this.timer+=dt; if(this.timer>=this.spawn){ creatures.push(new Snowie(this.x,this.y,canvasElement.width,canvasElement.height)); this.timer=0;} }
+    update(dt,tx,ty){ super.update(dt,tx,ty); this.spawnMinions(dt); this.timer+=dt; if(this.timer>=this.spawn){ creatures.push(new Snowie(this.x,this.y,canvasElement.width,canvasElement.height)); this.timer=0;} }
   }
   class FlameWarden extends BaseBoss { constructor(cx,cy){ super(cx,cy); this.health=25; this.color='orange'; this.spawn=2; this.timer=0; }
-    update(dt,tx,ty){ super.update(dt,tx,ty); this.timer+=dt; if(this.timer>=this.spawn){ creatures.push(new FireSpinner(this.x,this.y,canvasElement.width,canvasElement.height)); this.timer=0;} }
+    update(dt,tx,ty){ super.update(dt,tx,ty); this.spawnMinions(dt); this.timer+=dt; if(this.timer>=this.spawn){ creatures.push(new FireSpinner(this.x,this.y,canvasElement.width,canvasElement.height)); this.timer=0;} }
   }
   class VortexBoss extends BaseBoss { constructor(cx,cy){ super(cx,cy); this.health=35; this.color='blue'; this.pulse=3; this.timer=0; this.pull=100; this.radiusPull=200; }
-    update(dt,tx,ty){ super.update(dt,tx,ty); this.timer+=dt; if(this.timer>=this.pulse){ creatures.forEach(c=>{ const dx=this.x-c.x, dy=this.y-c.y, d=Math.hypot(dx,dy)||1; if(d<this.radiusPull){ c.x+=dx/d*this.pull*dt; c.y+=dy/d*this.pull*dt;} }); this.timer=0;} }
+    update(dt,tx,ty){ super.update(dt,tx,ty); this.spawnMinions(dt); this.timer+=dt; if(this.timer>=this.pulse){ creatures.forEach(c=>{ const dx=this.x-c.x, dy=this.y-c.y, d=Math.hypot(dx,dy)||1; if(d<this.radiusPull){ c.x+=dx/d*this.pull*dt; c.y+=dy/d*this.pull*dt;} }); this.timer=0;} }
   }
   class SpinnerBoss extends BaseBoss { constructor(cx,cy){ super(cx,cy); this.health=30; this.color='yellow'; this.spin=6; this.interval=2.5; this.timer=0; }
-    update(dt,tx,ty){ this.angle+=this.spin*dt; this.x=tx; this.y=ty-150; this.timer+=dt; if(this.timer>=this.interval){ for(let a=0;a<360;a+=45){ const r=a*Math.PI/180; lasers.push(new PurpleLaser(this.x,this.y,Math.cos(r)*300,Math.sin(r)*300)); } this.timer=0;} }
+    update(dt,tx,ty){ this.angle+=this.spin*dt; this.x=tx; this.y=ty-150; this.spawnMinions(dt); this.timer+=dt; if(this.timer>=this.interval){ for(let a=0;a<360;a+=45){ const r=a*Math.PI/180; lasers.push(new PurpleLaser(this.x,this.y,Math.cos(r)*300,Math.sin(r)*300)); } this.timer=0;} }
   }
   class RamBoss extends BaseBoss { constructor(cx,cy){ super(cx,cy); this.health=40; this.color='brown'; this.charge=400; this.interval=4; this.timer=0; this.charging=false; this.dur=0.5; this.t=0; }
-    update(dt,tx,ty){ if(!this.charging){ this.timer+=dt; if(this.timer>=this.interval){ this.charging=true; this.t=0; this.timer=0; const dcs=metricsList.map(m=>[Math.hypot(this.x-m.faceCoords[0],this.y-m.faceCoords[1]),m.faceCoords]); const tgt=dcs.sort((a,b)=>a[0]-b[0])[0][1]; const dx=tgt[0]-this.x, dy=tgt[1]-this.y, d=Math.hypot(dx,dy)||1; this.vx=dx/d*this.charge; this.vy=dy/d*this.charge; }} else { this.t+=dt; this.x+=this.vx*dt; this.y+=this.vy*dt; if(this.t>=this.dur) this.charging=false; }}
+    update(dt,tx,ty){ if(!this.charging){ this.timer+=dt; if(this.timer>=this.interval){ this.charging=true; this.t=0; this.timer=0; const dcs=metricsList.map(m=>[Math.hypot(this.x-m.faceCoords[0],this.y-m.faceCoords[1]),m.faceCoords]); const tgt=dcs.sort((a,b)=>a[0]-b[0])[0][1]; const dx=tgt[0]-this.x, dy=tgt[1]-this.y, d=Math.hypot(dx,dy)||1; this.vx=dx/d*this.charge; this.vy=dy/d*this.charge; }} else { this.t+=dt; this.x+=this.vx*dt; this.y+=this.vy*dt; if(this.t>=this.dur) this.charging=false; } this.spawnMinions(dt); }
   }
   class TrackerBoss extends BaseBoss { constructor(cx,cy){ super(cx,cy); this.health=30; this.color='lime'; this.interval=3; this.timer=0; }
-    update(dt,tx,ty){ super.update(dt,tx,ty); this.timer+=dt; if(this.timer>=this.interval){ const dcs=metricsList.map(m=>[Math.hypot(this.x-m.faceCoords[0],this.y-m.faceCoords[1]),m.faceCoords]); const tgt=dcs.sort((a,b)=>a[0]-b[0])[0][1]; const dx=tgt[0]-this.x, dy=tgt[1]-this.y, d=Math.hypot(dx,dy)||1; lasers.push(new PurpleLaser(this.x,this.y,dx/d*200,dy/d*200)); this.timer=0;} }
+    update(dt,tx,ty){ super.update(dt,tx,ty); this.spawnMinions(dt); this.timer+=dt; if(this.timer>=this.interval){ const dcs=metricsList.map(m=>[Math.hypot(this.x-m.faceCoords[0],this.y-m.faceCoords[1]),m.faceCoords]); const tgt=dcs.sort((a,b)=>a[0]-b[0])[0][1]; const dx=tgt[0]-this.x, dy=tgt[1]-this.y, d=Math.hypot(dx,dy)||1; lasers.push(new PurpleLaser(this.x,this.y,dx/d*200,dy/d*200)); this.timer=0;} }
   }
   class ArticalBoss extends BaseBoss { constructor(cx,cy){ super(cx,cy); this.health=35; this.color='teal'; this.interval=4; this.timer=0; }
-    update(dt,tx,ty){ super.update(dt,tx,ty); this.timer+=dt; if(this.timer>=this.interval && metricsList.length){ const idx=Math.floor(Math.random()*metricsList.length); this.x=metricsList[idx].faceCoords[0]; this.y=metricsList[idx].faceCoords[1]; this.timer=0;} }
+    update(dt,tx,ty){ super.update(dt,tx,ty); this.spawnMinions(dt); this.timer+=dt; if(this.timer>=this.interval && metricsList.length){ const idx=Math.floor(Math.random()*metricsList.length); this.x=metricsList[idx].faceCoords[0]; this.y=metricsList[idx].faceCoords[1]; this.timer=0;} }
   }
   class ShadowBoss extends BaseBoss { constructor(cx,cy){ super(cx,cy); this.health=40; this.color='black'; this.interval=5; this.timer=0; }
-    update(dt,tx,ty){ super.update(dt,tx,ty); this.timer+=dt; if(this.timer>=this.interval){ const edge=['top','bottom','left','right'][Math.floor(Math.random()*4)]; const sw=canvasElement.width, sh=canvasElement.height; let px,py; if(edge==='top'){px=Math.random()*sw;py=0;}else if(edge==='bottom'){px=Math.random()*sw;py=sh;}else if(edge==='left'){px=0;py=Math.random()*sh;}else{px=sw;py=Math.random()*sh;} creatures.push(new Creature(px,py,sw,sh)); this.timer=0;} }
+    update(dt,tx,ty){ super.update(dt,tx,ty); this.spawnMinions(dt); this.timer+=dt; if(this.timer>=this.interval){ const edge=['top','bottom','left','right'][Math.floor(Math.random()*4)]; const sw=canvasElement.width, sh=canvasElement.height; let px,py; if(edge==='top'){px=Math.random()*sw;py=0;}else if(edge==='bottom'){px=Math.random()*sw;py=sh;}else if(edge==='left'){px=0;py=Math.random()*sh;}else{px=sw;py=Math.random()*sh;} creatures.push(new Creature(px,py,sw,sh)); this.timer=0;} }
   }
   class AlienKingBoss extends BaseBoss { constructor(cx,cy){ super(cx,cy); this.health=60; this.color='purple'; this.interval=4; this.timer=0; }
-    update(dt,tx,ty){ super.update(dt,tx,ty); this.timer+=dt; if(this.timer>=this.interval){ for(let a=0;a<360;a+=30){ const r=(a+Math.random()*30)*Math.PI/180; lasers.push(new PurpleLaser(this.x,this.y,Math.cos(r)*350,Math.sin(r)*350)); } this.timer=0;} }
+    update(dt,tx,ty){ super.update(dt,tx,ty); this.spawnMinions(dt); this.timer+=dt; if(this.timer>=this.interval){ for(let a=0;a<360;a+=30){ const r=(a+Math.random()*30)*Math.PI/180; lasers.push(new PurpleLaser(this.x,this.y,Math.cos(r)*350,Math.sin(r)*350)); } this.timer=0;} }
   }
   class MadackedaBoss extends BaseBoss { constructor(cx,cy){ super(cx,cy); this.health=50; this.color='purple'; this.spawn=1.5; this.timer=0; this.tportI=5; this.tportT=0; this.shI=4; this.shT=0; this.shDur=2; this.shOn=false; this.vI=3; this.vT=0; }
     update(dt,tx,ty){ super.update(dt,tx,ty); this.timer+=dt; if(this.timer>=this.spawn){ creatures.push(new Snowie(this.x,this.y,canvasElement.width,canvasElement.height)); creatures.push(new FireSpinner(this.x,this.y,canvasElement.width,canvasElement.height)); this.timer=0;} this.tportT+=dt; if(this.tportT>=this.tportI){ const idx=Math.floor(Math.random()*metricsList.length); this.x=metricsList[idx].faceCoords[0]; this.y=metricsList[idx].faceCoords[1]; this.tportT=0;} this.shT+=dt; if(!this.shOn && this.shT>=this.shI){ this.shOn=true; this.shDur=this.shDur; this.shT=0;} if(this.shOn){ this.shDur-=dt; if(this.shDur<=0){ this.shOn=false; }} this.vT+=dt; if(this.vT>=this.vI){ [240,300].forEach(a=>{const r=a*Math.PI/180; lasers.push(new PurpleLaser(this.x,this.y,Math.cos(r)*400,Math.sin(r)*400));}); this.vT=0;} }
