@@ -579,9 +579,10 @@
       ctx.beginPath();ctx.arc(fx,fy,50,0,2*Math.PI);ctx.stroke();
       // Draw cartoon eyes (open/closed)
       ctx.save();
-      ctx.fillStyle = 'black';
+      ctx.fillStyle = 'red';
       if (m.eyes_closed) {
         // Draw closed eyes as lines
+        ctx.strokeStyle = 'red';
         ctx.lineWidth = 4;
         ctx.beginPath();
         ctx.moveTo(fx-23, fy-10);
