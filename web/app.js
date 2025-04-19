@@ -413,19 +413,11 @@
     if(audioAmplitude > 0.25) { // Threshold for loud sound
       metricsList.forEach((metrics,i) => {
         const curr = centers[i];
-        // Get iris center positions if available
-        const lm = latestFaceLandmarks && latestFaceLandmarks[i];
-        let leftEye = curr, rightEye = curr;
-        if (lm) {
-          if (lm[468] && lm[473]) {
-            leftEye = [lm[468].x * canvasElement.width, lm[468].y * canvasElement.height];
-            rightEye = [lm[473].x * canvasElement.width, lm[473].y * canvasElement.height];
-          } else {
-            // Fallback: average eye landmarks
-            leftEye = [(lm[33].x + lm[133].x)/2 * canvasElement.width, (lm[33].y + lm[133].y)/2 * canvasElement.height];
-            rightEye = [(lm[263].x + lm[362].x)/2 * canvasElement.width, (lm[263].y + lm[362].y)/2 * canvasElement.height];
-          }
-        }
+        const fx = curr[0];
+        const fy = curr[1];
+        // Use avatar's drawn eye positions
+        const leftEye = [fx-16, fy-10];
+        const rightEye = [fx+16, fy-10];
         // Direction: yaw/pitch (trial and error)
         let dx = metrics.yaw * 200;
         let dy = metrics.pitch * 200;
@@ -443,19 +435,11 @@
     metricsList.forEach((metrics,i) => {
       if (metrics.blink) {
         const curr = centers[i];
-        // Get iris center positions if available
-        const lm = latestFaceLandmarks && latestFaceLandmarks[i];
-        let leftEye = curr, rightEye = curr;
-        if (lm) {
-          if (lm[468] && lm[473]) {
-            leftEye = [lm[468].x * canvasElement.width, lm[468].y * canvasElement.height];
-            rightEye = [lm[473].x * canvasElement.width, lm[473].y * canvasElement.height];
-          } else {
-            // Fallback: average eye landmarks
-            leftEye = [(lm[33].x + lm[133].x)/2 * canvasElement.width, (lm[33].y + lm[133].y)/2 * canvasElement.height];
-            rightEye = [(lm[263].x + lm[362].x)/2 * canvasElement.width, (lm[263].y + lm[362].y)/2 * canvasElement.height];
-          }
-        }
+        const fx = curr[0];
+        const fy = curr[1];
+        // Use avatar's drawn eye positions
+        const leftEye = [fx-16, fy-10];
+        const rightEye = [fx+16, fy-10];
         // Direction: yaw/pitch (trial and error)
         let dx = metrics.yaw * 200;
         let dy = metrics.pitch * 200;
