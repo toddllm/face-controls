@@ -329,8 +329,8 @@
     if (lastHeadDir.length !== centers.length) lastHeadDir = centers.map(_ => [0, -1]);
     centers.forEach((curr, i) => {
       const prev = prevFaceCenters[i] || curr;
-      // Mirror the head movement direction for x
-      const dx = -(curr[0] - prev[0]);
+      // Revert: do not mirror the head movement direction for x
+      const dx = curr[0] - prev[0];
       const dy = curr[1] - prev[1];
       if (Math.abs(dx) > 0.5 || Math.abs(dy) > 0.5) {
         // Update last head direction if significant movement
