@@ -382,19 +382,16 @@
       state='boss_'+[ 'snow','fire','vortex','spinner','ram','tracker','artical','shadow','alienking','madackeda' ][waveIndex];
       waveKills=0;creatures.length=0;lasers.length=0;
     }
-    // Voice-activated straight laser (improved: use head movement direction)
+    // Voice-activated straight laser (improved: use head direction)
     if(audioAmplitude > 0.25) { // Threshold for loud sound
       metricsList.forEach((metrics,i) => {
-        // Use yaw/pitch if significant, else default up
         const prev = prevFaceCenters[i] || [metrics.faceCoords[0]*sw, metrics.faceCoords[1]*sh];
         const curr = centers[i];
-        let dx, dy;
-        if (Math.abs(metrics.yaw) > 0.01 || Math.abs(metrics.pitch) > 0.01) {
-          dx = metrics.yaw * 100;
-          dy = -metrics.pitch * 100;
-        } else {
+        let dx = metrics.yaw * 200;
+        let dy = metrics.pitch * 200;
+        if (Math.abs(dx) < 0.01 && Math.abs(dy) < 0.01) {
           dx = 0;
-          dy = -1; // Default: shoot straight up
+          dy = -1;
         }
         const mag = Math.hypot(dx,dy)||1e-6;
         const vx = dx/mag*600, vy = dy/mag*600;
@@ -408,13 +405,11 @@
       if (metrics.blink) {
         const prev = prevFaceCenters[i] || [metrics.faceCoords[0]*sw, metrics.faceCoords[1]*sh];
         const curr = centers[i];
-        let dx, dy;
-        if (Math.abs(metrics.yaw) > 0.01 || Math.abs(metrics.pitch) > 0.01) {
-          dx = metrics.yaw * 100;
-          dy = -metrics.pitch * 100;
-        } else {
+        let dx = metrics.yaw * 200;
+        let dy = metrics.pitch * 200;
+        if (Math.abs(dx) < 0.01 && Math.abs(dy) < 0.01) {
           dx = 0;
-          dy = -1; // Default: shoot straight up
+          dy = -1;
         }
         const mag = Math.hypot(dx,dy)||1e-6;
         const vx = dx/mag*600, vy = dy/mag*600;
@@ -547,6 +542,14 @@
       const fy = m.faceCoords[1] * sh;
       ctx.strokeStyle='white';ctx.lineWidth=2;
       ctx.beginPath();ctx.arc(fx,fy,50,0,2*Math.PI);ctx.stroke();
+      // Draw cartoon eyes
+      ctx.save();
+      ctx.fillStyle = 'black';
+      ctx.beginPath();
+      ctx.arc(fx-16, fy-10, 7, 0, 2*Math.PI); // left eye
+      ctx.arc(fx+16, fy-10, 7, 0, 2*Math.PI); // right eye
+      ctx.fill();
+      ctx.restore();
       // Draw mouth on avatar
       const mouthW = 36 + 120 * Math.min(1, m.mouth_open_ratio); // width grows with mouth open
       const mouthH = 12 + 60 * Math.min(1, m.mouth_open_ratio);  // height grows with mouth open
