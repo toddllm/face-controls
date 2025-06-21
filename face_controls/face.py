@@ -1,3 +1,7 @@
+# Suppress MediaPipe verbose logging
+import os
+os.environ['GLOG_minloglevel'] = '3'
+
 import cv2
 import mediapipe as mp
 import numpy as np

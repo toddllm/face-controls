@@ -12,7 +12,14 @@ if [ -f .env ]; then
 fi
 # NOTE: Make sure AWS credentials and region are exported in the environment before running this script.
 # Deploy static web files to S3 website bucket
-HOST_BUCKET="facecontrolgame-static"
+if [ -n "${S3_BUCKET:-}" ]; then
+  HOST_BUCKET="$S3_BUCKET"
+elif [ -n "${DOMAIN:-}" ]; then
+  HOST_BUCKET="$(echo "$DOMAIN" | sed -E 's~https?://~~' | sed 's~/$~~')"
+else
+  HOST_BUCKET="facecontrolgame-static"
+fi
+
 echo "Syncing local web/ folder to s3://$HOST_BUCKET" >&2
 aws s3 sync web/ "s3://$HOST_BUCKET" --delete --region us-east-1
 echo "Configuring website hosting on $HOST_BUCKET" >&2
