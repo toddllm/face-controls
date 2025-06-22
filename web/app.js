@@ -1254,9 +1254,28 @@
   // Track last nonzero head movement direction for each player
   let lastHeadDir = [];
   function animate(now=performance.now()) {
-    if (paused) return;
     const dt = (now - lastTime) / 1000;
     lastTime = now;
+    
+    // Update Gary even during pause (she ignores pause)
+    if (garyBoss) {
+      const centers = metricsList.map(m=>[canvasElement.width - (m.faceCoords[0]*(canvasElement.width/(videoElement.videoWidth||640))), m.faceCoords[1]*(canvasElement.height/(videoElement.videoHeight||480))]);
+      const nearestCenter = centers[0] || [canvasElement.width/2, canvasElement.height/2];
+      garyBoss.update(dt, nearestCenter[0], nearestCenter[1], metricsList, centers, creatures, boss);
+    }
+    
+    // Update pumus even during pause (they turn to gunk)
+    pumus.forEach(p=>p.update(dt));
+    
+    // Update storms even during pause
+    storms.forEach(s=>s.update(dt));
+    
+    if (paused) {
+      // Gary continues to move, but skip other updates
+      requestAnimationFrame(animate);
+      return;
+    }
+    
     getMicData();
     const nowSec = performance.now()/1000;
     if(state === 'minions' && nowSec - lastSpawn > spawnInterval && !elderDimensionActive) {
@@ -1619,12 +1638,6 @@
       }
     }
     
-    // Update Gary (always, even during pause)
-    if (garyBoss) {
-      const nearestCenter = centers[0] || [canvasElement.width/2, canvasElement.height/2];
-      garyBoss.update(dt, nearestCenter[0], nearestCenter[1], metricsList, centers, creatures, boss);
-    }
-    // Render
     ctx.clearRect(0,0,canvasElement.width,canvasElement.height);
     // Draw level and monster counter to the right of the video overlay
     let overlayLeft = 340; // fallback if faceContainer not found
