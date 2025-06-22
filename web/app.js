@@ -1042,21 +1042,36 @@
         for (let i = creatures.length - 1; i >= 0; i--) {
           const c = creatures[i];
           if (c !== this.ridingXyz && Math.hypot(c.x - this.x, c.y - this.y) < this.radius + this.eatRadius) {
-            // Can't eat XYZ dragon (too powerful), but can eat regular Dragons
-            if (c instanceof XYZ) {
-              continue;
-            }
-            // Special message for eating dragons
+            // Special message for eating different creatures
             let eatMessage = "eating";
-            if (c instanceof Dragon) {
+            let shouldRespawn = false;
+            
+            if (c instanceof XYZ) {
+              eatMessage = "CONSUMING MIGHTY XYZ!";
+              shouldRespawn = true; // XYZ respawns when eaten
+            } else if (c instanceof Dragon) {
               eatMessage = c.createdByGary ? "EATING MY OWN DRAGON!" : "EATING DRAGON!";
             }
+            
             // Eat the creature
             creatures.splice(i, 1);
             this.totalEaten++;
             this.radius = this.baseRadius + (this.totalEaten * this.growthRate);
-            this.speak(eatMessage); // Says different messages for different creatures
-            this.huntTarget = null; // Find new target
+            this.speak(eatMessage);
+            this.huntTarget = null;
+            
+            // Respawn XYZ after being eaten
+            if (shouldRespawn && c instanceof XYZ) {
+              setTimeout(() => {
+                const respawnX = Math.random() * (canvasElement.width - 200) + 100;
+                const respawnY = Math.random() * (canvasElement.height - 200) + 100;
+                const newXYZ = new XYZ(respawnX, respawnY, canvasElement.width, canvasElement.height);
+                // Transfer some properties from the eaten XYZ
+                newXYZ.phase = Math.max(1, c.phase - 1); // Respawn at lower phase
+                newXYZ.health = newXYZ.maxHealth; // Full health on respawn
+                creatures.push(newXYZ);
+              }, 5000); // Respawn after 5 seconds
+            }
           }
         }
         
@@ -1082,6 +1097,19 @@
             this.huntTarget = null; // Find new target
           }
         });
+        
+        // Check AI players (can be eaten and do NOT respawn)
+        for (let i = aiPlayers.length - 1; i >= 0; i--) {
+          const ai = aiPlayers[i];
+          if (Math.hypot(ai.x - this.x, ai.y - this.y) < this.radius + this.eatRadius) {
+            // Eat the AI player permanently (no respawn)
+            aiPlayers.splice(i, 1);
+            this.totalEaten++;
+            this.radius = this.baseRadius + (this.totalEaten * this.growthRate);
+            this.speak("EATING AI HELPER!");
+            this.huntTarget = null;
+          }
+        }
         
         this.eatTimer = 0;
       }
@@ -1558,24 +1586,41 @@
       if (this.eatTimer >= this.eatInterval) {
         creatures.forEach((c, i) => {
           if (c !== this.ridingXyz && Math.hypot(c.x - this.x, c.y - this.y) < this.radius + this.eatRadius) {
-            if (!(c instanceof XYZ)) {
-              // Special messages for dragons
-              let eatMessage = "MEGA EATING!";
-              if (c instanceof Dragon) {
-                if (c.isMegaDragon) {
-                  eatMessage = "CONSUMING MY MEGA DRAGON!";
-                } else if (c.createdByGary) {
-                  eatMessage = "EATING MY OWN DRAGON!";
-                } else {
-                  eatMessage = "MEGA DRAGON CONSUMPTION!";
-                }
+            // Enhanced messages for all creature types including XYZ
+            let eatMessage = "MEGA EATING!";
+            let shouldRespawn = false;
+            
+            if (c instanceof XYZ) {
+              eatMessage = "MEGA XYZ ANNIHILATION!";
+              shouldRespawn = true; // XYZ respawns when eaten
+            } else if (c instanceof Dragon) {
+              if (c.isMegaDragon) {
+                eatMessage = "CONSUMING MY MEGA DRAGON!";
+              } else if (c.createdByGary) {
+                eatMessage = "EATING MY OWN DRAGON!";
+              } else {
+                eatMessage = "MEGA DRAGON CONSUMPTION!";
               }
-              
-              creatures.splice(i, 1);
-              this.totalEaten++;
-              this.radius = Math.min(200, this.baseRadius + (this.totalEaten * this.growthRate));
-              this.speak(eatMessage);
-              this.huntTarget = null;
+            }
+            
+            creatures.splice(i, 1);
+            this.totalEaten++;
+            this.radius = Math.min(200, this.baseRadius + (this.totalEaten * this.growthRate));
+            this.speak(eatMessage);
+            this.huntTarget = null;
+            
+            // Respawn XYZ after being eaten by Mega Gary
+            if (shouldRespawn && c instanceof XYZ) {
+              setTimeout(() => {
+                const respawnX = Math.random() * (canvasElement.width - 200) + 100;
+                const respawnY = Math.random() * (canvasElement.height - 200) + 100;
+                const newXYZ = new XYZ(respawnX, respawnY, canvasElement.width, canvasElement.height);
+                // Mega Gary makes XYZ respawn stronger
+                newXYZ.phase = Math.min(3, c.phase + 1); // Respawn at higher phase
+                newXYZ.health = newXYZ.maxHealth;
+                newXYZ.enragedByMegaGary = true; // Mark as enraged
+                creatures.push(newXYZ);
+              }, 3000); // Faster respawn for Mega Gary (3 seconds)
             }
           }
         });
@@ -1599,6 +1644,19 @@
             this.huntTarget = null;
           }
         });
+        
+        // Check AI players (can be eaten and do NOT respawn)
+        for (let i = aiPlayers.length - 1; i >= 0; i--) {
+          const ai = aiPlayers[i];
+          if (Math.hypot(ai.x - this.x, ai.y - this.y) < this.radius + this.eatRadius) {
+            // Eat the AI player permanently (no respawn)
+            aiPlayers.splice(i, 1);
+            this.totalEaten++;
+            this.radius = Math.min(200, this.baseRadius + (this.totalEaten * this.growthRate));
+            this.speak("MEGA AI CONSUMPTION!");
+            this.huntTarget = null;
+          }
+        }
         
         this.eatTimer = 0;
       }
