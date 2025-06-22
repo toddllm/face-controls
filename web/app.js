@@ -132,6 +132,84 @@
     }
   }
   
+  // Guster block class
+  class GusterBlock {
+    constructor(x, y) {
+      this.x = x;
+      this.y = y;
+      this.width = 30;
+      this.height = 30;
+      this.active = true;
+      this.color = '#4169E1';
+    }
+  }
+  
+  // Pumus class
+  class Pumus {
+    constructor(x, y) {
+      this.x = x;
+      this.y = y;
+      this.radius = 20;
+      this.active = true;
+      this.gunkTimer = 0;
+      this.gunkInterval = 3.0;
+      this.isGunk = false;
+      this.color = '#FF69B4';
+      this.gunkColor = '#228B22';
+    }
+    update(dt) {
+      if (!this.isGunk) {
+        this.gunkTimer += dt;
+        if (this.gunkTimer >= this.gunkInterval) {
+          this.isGunk = true;
+          this.color = this.gunkColor;
+        }
+      }
+    }
+  }
+  
+  // Storm class
+  class Storm {
+    constructor(x, y, radius) {
+      this.x = x;
+      this.y = y;
+      this.radius = radius;
+      this.maxRadius = radius + 100;
+      this.growthRate = 50;
+      this.rotation = 0;
+      this.lightning = [];
+      this.lightningTimer = 0;
+      this.lightningInterval = 0.5;
+      this.active = true;
+    }
+    update(dt) {
+      this.rotation += dt * 2;
+      if (this.radius < this.maxRadius) {
+        this.radius += this.growthRate * dt;
+      }
+      
+      this.lightningTimer += dt;
+      if (this.lightningTimer >= this.lightningInterval) {
+        // Create lightning strike
+        const angle = Math.random() * Math.PI * 2;
+        const dist = Math.random() * this.radius;
+        this.lightning.push({
+          x: this.x + Math.cos(angle) * dist,
+          y: this.y + Math.sin(angle) * dist,
+          lifetime: 0.2,
+          age: 0
+        });
+        this.lightningTimer = 0;
+      }
+      
+      // Update lightning
+      this.lightning = this.lightning.filter(l => {
+        l.age += dt;
+        return l.age < l.lifetime;
+      });
+    }
+  }
+  
   // Helper function to spawn a random minion at (x, y)
   function spawnRandomMinion(x, y, sw, sh) {
     const minionTypes = [Creature, Snowie, FireSpinner, Ghost, Skeleton, Caster, Dragon];
@@ -540,6 +618,14 @@
       this.growthRate = 2; // Grow 2 pixels per entity eaten
       this.huntTarget = null;
       this.huntSpeed = 150;
+      
+      // Storm system
+      this.gunkCollected = 0;
+      this.gunkNeededForStorm = 5;
+      this.layBlockTimer = 0;
+      this.layBlockInterval = 2.0; // Lay blocks every 2 seconds
+      this.stormCreationTimer = 0;
+      this.stormCreationInterval = 1.0;
     }
     checkEyeContact(metricsList, centers) {
       this.beingLookedAt = false;
@@ -739,6 +825,44 @@
         this.voiceTimer = 0;
       }
       
+      // Storm system - lay Guster blocks and Pumus
+      this.layBlockTimer += dt;
+      if (this.layBlockTimer >= this.layBlockInterval) {
+        // Randomly lay either a Guster block or Pumus
+        if (Math.random() < 0.5) {
+          // Lay Guster block behind Gary
+          const blockX = this.x - Math.random() * 50 - 25;
+          const blockY = this.y + Math.random() * 40 - 20;
+          gusterBlocks.push(new GusterBlock(blockX, blockY));
+        } else {
+          // Lay Pumus behind Gary
+          const pumusX = this.x - Math.random() * 50 - 25;
+          const pumusY = this.y + Math.random() * 40 - 20;
+          pumus.push(new Pumus(pumusX, pumusY));
+        }
+        this.layBlockTimer = 0;
+        this.speak("laying"); // Says "not a threat" while laying dangerous items
+      }
+      
+      // Check for gunk (Pumus that have turned)
+      for (let i = pumus.length - 1; i >= 0; i--) {
+        const p = pumus[i];
+        if (p.isGunk && Math.hypot(p.x - this.x, p.y - this.y) < this.radius + 30) {
+          // Collect the gunk
+          this.gunkCollected++;
+          pumus.splice(i, 1);
+          
+          // Create storm if enough gunk collected
+          if (this.gunkCollected >= this.gunkNeededForStorm) {
+            const stormX = this.x + (Math.random() - 0.5) * 200;
+            const stormY = this.y + (Math.random() - 0.5) * 200;
+            storms.push(new Storm(stormX, stormY, 50));
+            this.gunkCollected = 0;
+            this.speak("storm"); // Says "not a threat" while creating destructive storms
+          }
+        }
+      }
+      
       // Attacks only if not being looked at (or if provoked)
       if (!this.beingLookedAt || this.provoked) {
         this.attackTimer += dt;
@@ -920,6 +1044,9 @@
   let snakes = [];
   const portals = [];
   const villages = [];
+  const gusterBlocks = [];
+  const pumus = [];
+  const storms = [];
   let garyBoss = null;
   let elderDimensionActive = false;
   let boss = null;
@@ -1450,6 +1577,48 @@
     // Update portals
     portals.forEach(p=>p.update(dt));
     
+    // Update pumus (turn to gunk after time)
+    pumus.forEach(p=>p.update(dt));
+    
+    // Update storms
+    storms.forEach(s=>s.update(dt));
+    
+    // Storm damage to players and creatures
+    storms.forEach(storm => {
+      // Damage players in storm
+      centers.forEach((cen, i) => {
+        if (!eatenByGary[i] && invulTimers[i] <= 0) {
+          const dist = Math.hypot(cen[0] - storm.x, cen[1] - storm.y);
+          if (dist < storm.radius) {
+            playerLives[i] = (playerLives[i] || 3) - 1;
+            invulTimers[i] = 1.0; // Shorter invul time for storm damage
+            if (playerLives[i] <= 0) {
+              playerLives[i] = 3;
+              invulTimers[i] = 2.0;
+            }
+          }
+        }
+      });
+      
+      // Damage creatures in storm
+      creatures.forEach(c => {
+        if (!(c instanceof GaryBoss) && !(c instanceof XYZ)) {
+          const dist = Math.hypot(c.x - storm.x, c.y - storm.y);
+          if (dist < storm.radius) {
+            // Lightning strike damage
+            c.health = (c.health || 1) - 1;
+          }
+        }
+      });
+    });
+    
+    // Remove inactive storms
+    for (let i = storms.length - 1; i >= 0; i--) {
+      if (!storms[i].active) {
+        storms.splice(i, 1);
+      }
+    }
+    
     // Update Gary (always, even during pause)
     if (garyBoss) {
       const nearestCenter = centers[0] || [canvasElement.width/2, canvasElement.height/2];
@@ -1731,6 +1900,78 @@
         ctx.arc(innerX, innerY, 5, 0, 2*Math.PI);
         ctx.fill();
       }
+      ctx.restore();
+    });
+    
+    // Draw Guster blocks
+    gusterBlocks.forEach(block => {
+      ctx.fillStyle = block.color;
+      ctx.fillRect(block.x - block.width/2, block.y - block.height/2, block.width, block.height);
+      // Add glowing effect
+      ctx.strokeStyle = '#87CEEB';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(block.x - block.width/2, block.y - block.height/2, block.width, block.height);
+    });
+    
+    // Draw Pumus
+    pumus.forEach(p => {
+      ctx.fillStyle = p.color;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.radius, 0, 2*Math.PI);
+      ctx.fill();
+      
+      // Add glow effect when turning to gunk
+      if (p.gunkTimer > p.gunkInterval * 0.8) {
+        ctx.strokeStyle = p.gunkColor;
+        ctx.lineWidth = 3;
+        ctx.globalAlpha = Math.sin(p.gunkTimer * 10) * 0.5 + 0.5;
+        ctx.stroke();
+        ctx.globalAlpha = 1.0;
+      }
+    });
+    
+    // Draw Storms
+    storms.forEach(storm => {
+      ctx.save();
+      
+      // Draw swirling storm cloud
+      ctx.strokeStyle = '#4B0082';
+      ctx.lineWidth = 5;
+      ctx.globalAlpha = 0.7;
+      
+      // Multiple rotating circles for storm effect
+      for (let i = 0; i < 3; i++) {
+        ctx.beginPath();
+        const offsetAngle = storm.rotation + i * (Math.PI * 2 / 3);
+        const offsetRadius = storm.radius * (0.8 - i * 0.2);
+        ctx.arc(storm.x + Math.cos(offsetAngle) * 20, 
+                storm.y + Math.sin(offsetAngle) * 20, 
+                offsetRadius, 0, 2*Math.PI);
+        ctx.stroke();
+      }
+      
+      // Draw lightning bolts
+      ctx.strokeStyle = '#FFFF00';
+      ctx.lineWidth = 3;
+      ctx.shadowColor = '#FFFFFF';
+      ctx.shadowBlur = 10;
+      storm.lightning.forEach(bolt => {
+        ctx.globalAlpha = 1 - (bolt.age / bolt.lifetime);
+        ctx.beginPath();
+        ctx.moveTo(storm.x, storm.y);
+        // Zigzag lightning pattern
+        const segments = 3;
+        for (let i = 1; i <= segments; i++) {
+          const progress = i / segments;
+          const offsetX = (Math.random() - 0.5) * 20;
+          const x = storm.x + (bolt.x - storm.x) * progress + offsetX;
+          const y = storm.y + (bolt.y - storm.y) * progress;
+          ctx.lineTo(x, y);
+        }
+        ctx.lineTo(bolt.x, bolt.y);
+        ctx.stroke();
+      });
+      
       ctx.restore();
     });
     
