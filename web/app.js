@@ -37,7 +37,7 @@
   
   // Keyboard handling for portal creation
   window.addEventListener('keydown', (e) => {
-    if (e.key.toLowerCase() === 'p' && !elderDimensionActive && waveIndex >= 5) {
+    if (e.key.toLowerCase() === 'p' && !elderDimensionActive) {
       // Create Elder Dimension portal
       const portalX = Math.random() * (canvasElement.width - 200) + 100;
       const portalY = Math.random() * (canvasElement.height - 200) + 100;
@@ -150,6 +150,118 @@
     }
   }
   
+  // Scanner Ducky class for threat detection
+  class ScannerDucky {
+    constructor(gary) {
+      this.gary = gary;
+      this.scanResults = new Map();
+      this.scanRadius = 200;
+      this.scanInterval = 0.5;
+      this.scanTimer = 0;
+    }
+    scan(creatures, boss, players) {
+      this.scanResults.clear();
+      // Scan creatures
+      creatures.forEach(c => {
+        const dist = Math.hypot(c.x - this.gary.x, c.y - this.gary.y);
+        if (dist < this.scanRadius) {
+          let threat = 'safe';
+          let powers = [];
+          if (c instanceof Dragon) { threat = 'danger'; powers.push('flight', 'fire'); }
+          else if (c instanceof Ghost) { threat = 'medium'; powers.push('phase'); }
+          else if (c instanceof Caster) { threat = 'medium'; powers.push('magic'); }
+          else if (c instanceof FireSpinner) { threat = 'medium'; powers.push('fire-spin'); }
+          else if (c instanceof Skeleton) { threat = 'low'; powers.push('undead'); }
+          else if (c instanceof Snowie) { threat = 'safe'; powers.push('ice'); }
+          this.scanResults.set(c, { threat, powers, type: 'creature' });
+        }
+      });
+      // Scan boss
+      if (boss && Math.hypot(boss.x - this.gary.x, boss.y - this.gary.y) < this.scanRadius) {
+        this.scanResults.set(boss, { threat: 'extreme', powers: ['boss-abilities'], type: 'boss' });
+      }
+      // Scan players
+      players.forEach((p, i) => {
+        if (p && Math.hypot(p[0] - this.gary.x, p[1] - this.gary.y) < this.scanRadius) {
+          this.scanResults.set(`player_${i}`, { threat: 'rival', powers: ['laser-eyes', 'mouth-capture'], type: 'player' });
+        }
+      });
+    }
+    isSafeToRide(entity) {
+      const result = this.scanResults.get(entity);
+      return result && result.threat === 'safe';
+    }
+  }
+
+  // Space Jail class for trapping monsters
+  class SpaceJail {
+    constructor(x, y) {
+      this.x = x;
+      this.y = y;
+      this.width = 150;
+      this.height = 150;
+      this.active = false;
+      this.trapped = [];
+      this.trapdoorOpen = false;
+      this.portalEffect = 0;
+    }
+    activate() {
+      this.active = true;
+      this.trapdoorOpen = true;
+      this.portalEffect = 1;
+    }
+    deactivate() {
+      this.trapdoorOpen = false;
+      setTimeout(() => {
+        this.active = false;
+        this.trapped = [];
+      }, 500);
+    }
+    update(dt, creatures) {
+      if (this.portalEffect > 0) this.portalEffect -= dt * 2;
+      if (this.active && this.trapdoorOpen) {
+        creatures.forEach(c => {
+          const dx = c.x - this.x;
+          const dy = c.y - this.y;
+          const dist = Math.hypot(dx, dy);
+          if (dist < 100 && !this.trapped.includes(c)) {
+            // Suck creature into space jail
+            const pull = 200;
+            c.x -= (dx/dist) * pull * dt;
+            c.y -= (dy/dist) * pull * dt;
+            if (dist < 20) {
+              this.trapped.push(c);
+              const idx = creatures.indexOf(c);
+              if (idx > -1) creatures.splice(idx, 1);
+            }
+          }
+        });
+      }
+    }
+    render(ctx) {
+      if (!this.active) return;
+      ctx.save();
+      // Portal effect
+      ctx.strokeStyle = `rgba(138, 43, 226, ${this.portalEffect})`;
+      ctx.lineWidth = 5;
+      ctx.beginPath();
+      ctx.arc(this.x, this.y, 100, 0, 2*Math.PI);
+      ctx.stroke();
+      // Space jail box
+      ctx.fillStyle = 'rgba(25, 25, 112, 0.3)';
+      ctx.fillRect(this.x - this.width/2, this.y - this.height/2, this.width, this.height);
+      ctx.strokeStyle = '#4169E1';
+      ctx.lineWidth = 3;
+      ctx.strokeRect(this.x - this.width/2, this.y - this.height/2, this.width, this.height);
+      // Trapped count
+      ctx.fillStyle = '#FFF';
+      ctx.font = 'bold 14px Arial';
+      ctx.textAlign = 'center';
+      ctx.fillText(`Trapped: ${this.trapped.length}`, this.x, this.y - this.height/2 - 10);
+      ctx.restore();
+    }
+  }
+
   // Gary boss with eye-contact mechanic
   class GaryBoss extends BaseBoss {
     constructor(cx, cy, isShadow = false) {
@@ -159,6 +271,7 @@
       this.health = isShadow ? 80 : 60;
       this.color = isShadow ? '#330033' : '#FF69B4';
       this.ridingXyz = null;
+      this.ridingShip = null;
       this.attackInterval = 1.5;
       this.attackTimer = 0;
       this.beingLookedAt = false;
@@ -169,6 +282,21 @@
       this.crystalInterval = 2.5;
       this.crystalTimer = 0;
       this.ignoresPause = true;
+      // New features
+      this.scannerDucky = new ScannerDucky(this);
+      this.heldItem = null; // Can be 'remote', 'weapon', etc.
+      this.spaceJail = null;
+      this.voiceLines = [
+        "I see you there!",
+        "Stop looking at me!",
+        "My ducky says you're dangerous!",
+        "Time for space jail!",
+        "XYZ, let's ride!",
+        "You can't escape my scanner!"
+      ];
+      this.voiceTimer = 0;
+      this.voiceInterval = 5.0;
+      this.lastVoiceLine = "";
     }
     checkEyeContact(metricsList, centers) {
       this.beingLookedAt = false;
@@ -194,9 +322,35 @@
         }
       }
     }
-    update(dt, tx, ty, metricsList, centers) {
-      // Always update even during pause
-      if (this.ridingXyz && this.ridingXyz.health > 0) {
+    update(dt, tx, ty, metricsList, centers, creatures, boss) {
+      // Scanner ducky periodic scan
+      this.scannerDucky.scanTimer += dt;
+      if (this.scannerDucky.scanTimer >= this.scannerDucky.scanInterval) {
+        this.scannerDucky.scan(creatures, boss, centers);
+        this.scannerDucky.scanTimer = 0;
+        
+        // Check for safe creatures to ride
+        if (!this.ridingXyz && !this.ridingShip) {
+          creatures.forEach(c => {
+            if (this.scannerDucky.isSafeToRide(c) && Math.hypot(c.x - this.x, c.y - this.y) < 100) {
+              // Ride the safe creature
+              this.ridingXyz = c;
+              this.speak("My ducky says this one is safe to ride!");
+            }
+          });
+        }
+      }
+      
+      // Movement logic
+      if (this.ridingShip) {
+        // Ship controls - Gary can fly around
+        const shipSpeed = 200;
+        const dx = tx - this.x;
+        const dy = ty - this.y;
+        const dist = Math.hypot(dx, dy) || 1e-6;
+        this.x += (dx/dist) * shipSpeed * dt;
+        this.y += (dy/dist) * shipSpeed * dt;
+      } else if (this.ridingXyz && this.ridingXyz.health > 0) {
         // Ride on top of XYZ
         this.x = this.ridingXyz.x;
         this.y = this.ridingXyz.y - 50;
@@ -207,6 +361,35 @@
       // Check eye contact
       if (metricsList && centers) {
         this.checkEyeContact(metricsList, centers);
+      }
+      
+      // Handle held items
+      if (this.heldItem === 'remote' && Math.random() < 0.01) {
+        // Randomly activate space jail with remote
+        if (!this.spaceJail || !this.spaceJail.active) {
+          const jailX = this.x + (Math.random() - 0.5) * 300;
+          const jailY = this.y + (Math.random() - 0.5) * 300;
+          this.spaceJail = new SpaceJail(jailX, jailY);
+          this.spaceJail.activate();
+          this.speak("Time for space jail!");
+        }
+      }
+      
+      // Update space jail
+      if (this.spaceJail) {
+        this.spaceJail.update(dt, creatures);
+        // Deactivate after 3 seconds
+        if (this.spaceJail.active && this.spaceJail.portalEffect <= 0 && Math.random() < 0.3 * dt) {
+          this.spaceJail.deactivate();
+        }
+      }
+      
+      // Voice talking
+      this.voiceTimer += dt;
+      if (this.voiceTimer >= this.voiceInterval) {
+        const line = this.voiceLines[Math.floor(Math.random() * this.voiceLines.length)];
+        this.speak(line);
+        this.voiceTimer = 0;
       }
       
       // Attacks only if not being looked at (or if provoked)
@@ -242,7 +425,25 @@
           this.y = Math.random() * (canvasElement.height - 100) + 50;
         }
         this.teleportTimer = 0;
+        
+        // Randomly pick up items after teleport
+        if (Math.random() < 0.3 && !this.heldItem) {
+          const items = ['remote', 'crystal', 'scanner'];
+          this.heldItem = items[Math.floor(Math.random() * items.length)];
+          this.speak(`I found a ${this.heldItem}!`);
+        }
+        
+        // Randomly find a ship to drive
+        if (Math.random() < 0.1 && !this.ridingShip && !this.ridingXyz) {
+          this.ridingShip = true;
+          this.speak("I found a spaceship! Time to fly!");
+        }
       }
+    }
+    
+    speak(text) {
+      this.lastVoiceLine = text;
+      console.log(`Gary says: ${text}`);
     }
   }
   
@@ -264,12 +465,26 @@
         // Spawn Gary from portal
         const isShadow = Math.random() < 0.01; // 1% chance for Shadow Gary
         garyBoss = new GaryBoss(this.x, this.y, isShadow);
+        
         // Also spawn XYZ for Gary to ride
         const xyz = new XYZ(this.x, this.y + 100);
+        xyz.health = 100; // Give XYZ more health
         garyBoss.ridingXyz = xyz;
         creatures.push(xyz);
+        
+        // Gary starts with a random item
+        const startItems = ['remote', 'crystal', 'scanner'];
+        garyBoss.heldItem = startItems[Math.floor(Math.random() * startItems.length)];
+        garyBoss.speak(`I have arrived with my ${garyBoss.heldItem}!`);
+        
         this.garySpawned = true;
         elderDimensionActive = true;
+        
+        // Portal disappears after spawning
+        const portalIndex = portals.indexOf(this);
+        if (portalIndex > -1) {
+          portals.splice(portalIndex, 1);
+        }
       }
     }
   }
@@ -442,6 +657,9 @@
   startBtn.addEventListener('click', () => {
     document.getElementById('startScreen').style.display = 'none';
     
+    // Show Elder Portal button
+    document.getElementById('elderPortalButton').style.display = 'block';
+    
     // On iOS, we need to request fullscreen for proper video permissions
     if (isMobile && /iPhone|iPad|iPod/i.test(navigator.userAgent)) {
       document.documentElement.requestFullscreen && document.documentElement.requestFullscreen();
@@ -452,6 +670,26 @@
     // Enable audio context on iOS
     if (audioCtx && audioCtx.state === 'suspended') {
       audioCtx.resume();
+    }
+  });
+  
+  // Elder Portal button functionality
+  const elderPortalBtn = document.getElementById('elderPortalButton');
+  elderPortalBtn.addEventListener('click', () => {
+    if (!elderDimensionActive) {
+      // Create Elder Dimension portal at random location
+      const portalX = Math.random() * (canvasElement.width - 200) + 100;
+      const portalY = Math.random() * (canvasElement.height - 200) + 100;
+      portals.push(new ElderPortal(portalX, portalY));
+      
+      // Optional: disable button temporarily to prevent spam
+      elderPortalBtn.disabled = true;
+      elderPortalBtn.textContent = 'Portal Opening...';
+      
+      setTimeout(() => {
+        elderPortalBtn.disabled = false;
+        elderPortalBtn.textContent = 'Build Portal to Elder';
+      }, 6000); // Re-enable after 6 seconds
     }
   });
 
@@ -787,7 +1025,7 @@
     // Update Gary (always, even during pause)
     if (garyBoss) {
       const nearestCenter = centers[0] || [canvasElement.width/2, canvasElement.height/2];
-      garyBoss.update(dt, nearestCenter[0], nearestCenter[1], metricsList, centers);
+      garyBoss.update(dt, nearestCenter[0], nearestCenter[1], metricsList, centers, creatures, boss);
     }
     // Render
     ctx.clearRect(0,0,canvasElement.width,canvasElement.height);
@@ -836,10 +1074,10 @@
       ctx.font = 'bold 20px Arial';
       ctx.fillStyle = '#DA70D6';
       ctx.fillText('Elder Dimension Active!', overlayLeft, 110);
-    } else if (!portals.length && waveIndex >= 5) {
+    } else if (!portals.length) {
       ctx.font = 'bold 18px Arial';
       ctx.fillStyle = '#BBB';
-      ctx.fillText('Press P to open Elder Portal', overlayLeft, 110);
+      ctx.fillText('Press P or use button to open Elder Portal', overlayLeft, 110);
     }
     ctx.restore();
     // Draw mouth capture effects
@@ -903,6 +1141,11 @@
     
     // Draw Gary boss
     if (garyBoss) {
+      // Draw space jail first
+      if (garyBoss.spaceJail) {
+        garyBoss.spaceJail.render(ctx);
+      }
+      
       // Draw XYZ if Gary is riding it
       if (garyBoss.ridingXyz && garyBoss.ridingXyz.health > 0) {
         const xyz = garyBoss.ridingXyz;
@@ -925,6 +1168,23 @@
           ctx.lineTo(endX, endY);
           ctx.stroke();
         }
+        ctx.restore();
+      }
+      
+      // Draw ship if Gary is riding one
+      if (garyBoss.ridingShip) {
+        ctx.save();
+        ctx.fillStyle = '#708090';
+        ctx.translate(garyBoss.x, garyBoss.y);
+        ctx.beginPath();
+        ctx.moveTo(0, -30);
+        ctx.lineTo(-25, 20);
+        ctx.lineTo(25, 20);
+        ctx.closePath();
+        ctx.fill();
+        ctx.strokeStyle = '#4682B4';
+        ctx.lineWidth = 3;
+        ctx.stroke();
         ctx.restore();
       }
       
@@ -964,6 +1224,68 @@
       ctx.arc(garyBoss.x + 10, garyBoss.y - 5, 5, 0, 2*Math.PI);
       ctx.fill();
       
+      // Draw scanner ducky
+      ctx.save();
+      ctx.fillStyle = '#FFD700';
+      const duckyX = garyBoss.x + garyBoss.radius + 10;
+      const duckyY = garyBoss.y - 20;
+      // Ducky body
+      ctx.beginPath();
+      ctx.ellipse(duckyX, duckyY, 12, 10, 0, 0, 2*Math.PI);
+      ctx.fill();
+      // Ducky head
+      ctx.beginPath();
+      ctx.arc(duckyX - 8, duckyY - 8, 8, 0, 2*Math.PI);
+      ctx.fill();
+      // Ducky beak
+      ctx.fillStyle = '#FFA500';
+      ctx.beginPath();
+      ctx.moveTo(duckyX - 16, duckyY - 8);
+      ctx.lineTo(duckyX - 20, duckyY - 6);
+      ctx.lineTo(duckyX - 16, duckyY - 4);
+      ctx.closePath();
+      ctx.fill();
+      // Scanner effect
+      if (garyBoss.scannerDucky.scanTimer < 0.1) {
+        ctx.strokeStyle = '#00FF00';
+        ctx.lineWidth = 2;
+        ctx.setLineDash([5, 5]);
+        ctx.beginPath();
+        ctx.arc(garyBoss.x, garyBoss.y, garyBoss.scannerDucky.scanRadius, 0, 2*Math.PI);
+        ctx.stroke();
+        ctx.setLineDash([]);
+      }
+      ctx.restore();
+      
+      // Draw held item
+      if (garyBoss.heldItem) {
+        ctx.save();
+        const itemX = garyBoss.x - garyBoss.radius - 20;
+        const itemY = garyBoss.y;
+        
+        if (garyBoss.heldItem === 'remote') {
+          ctx.fillStyle = '#696969';
+          ctx.fillRect(itemX - 8, itemY - 15, 16, 30);
+          ctx.fillStyle = '#FF0000';
+          ctx.fillRect(itemX - 4, itemY - 10, 8, 8);
+        } else if (garyBoss.heldItem === 'crystal') {
+          ctx.fillStyle = '#E6E6FA';
+          ctx.beginPath();
+          ctx.moveTo(itemX, itemY - 15);
+          ctx.lineTo(itemX - 10, itemY);
+          ctx.lineTo(itemX, itemY + 15);
+          ctx.lineTo(itemX + 10, itemY);
+          ctx.closePath();
+          ctx.fill();
+        } else if (garyBoss.heldItem === 'scanner') {
+          ctx.fillStyle = '#4169E1';
+          ctx.beginPath();
+          ctx.arc(itemX, itemY, 10, 0, 2*Math.PI);
+          ctx.fill();
+        }
+        ctx.restore();
+      }
+      
       // Health bar for Gary
       const garyMaxHealth = garyBoss.isShadow ? 80 : 60;
       const hbW = 100, hbH = 10;
@@ -985,7 +1307,15 @@
       ctx.textAlign = 'center';
       let label = garyBoss.isShadow ? 'Shadow Gary' : 'Gary';
       if (garyBoss.ridingXyz) label += ' riding XYZ';
+      else if (garyBoss.ridingShip) label += ' in Ship';
       ctx.fillText(label, garyBoss.x, garyBoss.y - garyBoss.radius - 40);
+      
+      // Show voice line
+      if (garyBoss.lastVoiceLine && garyBoss.voiceTimer < 2) {
+        ctx.font = 'bold 14px Arial';
+        ctx.fillStyle = '#FFD700';
+        ctx.fillText(garyBoss.lastVoiceLine, garyBoss.x, garyBoss.y + garyBoss.radius + 20);
+      }
       ctx.restore();
     }
     

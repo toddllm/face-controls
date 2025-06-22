@@ -120,6 +120,41 @@
         font-size: 20px;
       }
     }
+    
+    /* Elder Portal button */
+    #elderPortalButton {
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      padding: 15px 25px;
+      font-size: 18px;
+      cursor: pointer;
+      background: #8B008B;
+      color: white;
+      border: none;
+      border-radius: 8px;
+      box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+      z-index: 6;
+      transition: all 0.3s ease;
+    }
+    
+    #elderPortalButton:hover {
+      background: #9932CC;
+      transform: scale(1.05);
+    }
+    
+    #elderPortalButton:active {
+      transform: scale(0.95);
+    }
+    
+    @media screen and (max-width: 480px) {
+      #elderPortalButton {
+        bottom: 10px;
+        right: 10px;
+        padding: 12px 20px;
+        font-size: 16px;
+      }
+    }
   </style>
   <!-- MediaPipe FaceMesh & Hands -->
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js"></script>
@@ -137,6 +172,7 @@
   <div id="startScreen">
     <button id="startButton">Start Game</button>
   </div>
+  <button id="elderPortalButton" style="display: none;">Build Portal to Elder</button>
   <script src="app.js"></script>
 </body>
 </html>
