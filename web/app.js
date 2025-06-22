@@ -941,7 +941,18 @@
     // 1. Mark creatures for removal and reason
     let defeatMap = new Map(); // c => reason
     // Hand/arm defeat
-    handPositions.forEach(([wx,wy])=>{
+    handPositions.forEach(([wx,wy], handIdx)=>{
+      // Skip if this hand belongs to an eaten player
+      // Note: This is a simplified check - in multiplayer, we'd need to map hands to specific players
+      let skipHand = false;
+      for (let i = 0; i < eatenByGary.length; i++) {
+        if (eatenByGary[i]) {
+          skipHand = true;
+          break;
+        }
+      }
+      if (skipHand) return;
+      
       const scaledWx = wx * canvasElement.width / faceCanvas.width;
       const scaledWy = wy * canvasElement.height / faceCanvas.height;
       creatures.forEach((c,ci)=>{
@@ -992,6 +1003,9 @@
     // Mouth capture defeat
     creatures.forEach(c=>{
       centers.forEach((cen,i)=>{
+        // Skip if player is eaten by Gary
+        if (eatenByGary[i]) return;
+        
         if(!defeatMap.has(c) && metricsList[i].mouth_open_ratio>0.03){
           const mouthRadius = 60;
           const d=Math.hypot(c.x-cen[0],c.y-(cen[1]+30));
@@ -1091,6 +1105,9 @@
     // Voice-activated laser (from both eyes, using head movement direction)
     if(audioAmplitude > 0.25) { // Threshold for loud sound
       metricsList.forEach((metrics,i) => {
+        // Skip if player is eaten by Gary
+        if (eatenByGary[i]) return;
+        
         const curr = centers[i];
         const fx = curr[0];
         const fy = curr[1];
@@ -1111,6 +1128,9 @@
     }
     // Blink-activated laser (from both eyes, using head movement direction)
     metricsList.forEach((metrics,i) => {
+      // Skip if player is eaten by Gary
+      if (eatenByGary[i]) return;
+      
       if (metrics.blink) {
         const curr = centers[i];
         const fx = curr[0];
