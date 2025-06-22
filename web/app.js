@@ -681,6 +681,10 @@
         for (let i = creatures.length - 1; i >= 0; i--) {
           const c = creatures[i];
           if (c !== this.ridingXyz && Math.hypot(c.x - this.x, c.y - this.y) < this.radius + this.eatRadius) {
+            // Can't eat XYZ dragon (too powerful)
+            if (c instanceof XYZ) {
+              continue;
+            }
             // Eat the creature
             creatures.splice(i, 1);
             this.totalEaten++;
@@ -1177,7 +1181,17 @@
       creatures.forEach((c,ci)=>{
         if(!defeatMap.has(c) && Math.hypot(c.x-scaledWx,c.y-scaledWy)<c.radius+20) {
           handHitEffects.push({x:c.x,y:c.y,t:0});
-          defeatMap.set(c, 'hand');
+          // Special handling for XYZ dragon
+          if (c instanceof XYZ) {
+            if (!c.shieldActive) {
+              c.health -= 1;
+              if (c.health <= 0) {
+                defeatMap.set(c, 'hand');
+              }
+            }
+          } else {
+            defeatMap.set(c, 'hand');
+          }
         }
       });
       if(boss && Math.hypot(boss.x-scaledWx,boss.y-scaledWy)<boss.radius+30) {
@@ -1199,9 +1213,15 @@
     lasers.forEach(l => {
       creatures.forEach(c => {
         if(!defeatMap.has(c) && l.active && Math.hypot(c.x - l.x, c.y - l.y) < c.radius + l.radius) {
-          // Check if XYZ has shield active
-          if (c instanceof XYZ && c.shieldActive) {
-            l.active = false; // Shield blocks damage
+          // Special handling for XYZ dragon
+          if (c instanceof XYZ) {
+            l.active = false;
+            if (!c.shieldActive) {
+              c.health -= 1;
+              if (c.health <= 0) {
+                defeatMap.set(c, 'laser');
+              }
+            }
             return;
           }
           l.active = false;
@@ -1235,7 +1255,17 @@
           const d=Math.hypot(c.x-cen[0],c.y-(cen[1]+30));
           if(d<mouthRadius){
             mouthCaptureEffects.push({x:c.x,y:c.y,t:0});
-            defeatMap.set(c, 'mouth');
+            // Special handling for XYZ dragon
+            if (c instanceof XYZ) {
+              if (!c.shieldActive) {
+                c.health -= 2; // Mouth does more damage
+                if (c.health <= 0) {
+                  defeatMap.set(c, 'mouth');
+                }
+              }
+            } else {
+              defeatMap.set(c, 'mouth');
+            }
           }
         }
       });
@@ -1602,6 +1632,23 @@
           ctx.fillText(`Phase ${c.phase}`, c.x, c.y - c.radius - 10);
           ctx.restore();
         }
+        
+        // Health bar for XYZ
+        const barWidth = 80;
+        const barHeight = 8;
+        const barX = c.x - barWidth/2;
+        const barY = c.y + c.radius + 15;
+        
+        ctx.fillStyle = '#333';
+        ctx.fillRect(barX, barY, barWidth, barHeight);
+        
+        const healthRatio = c.health / c.maxHealth;
+        ctx.fillStyle = healthRatio > 0.6 ? '#9370DB' : (healthRatio > 0.3 ? '#FF69B4' : '#FF0066');
+        ctx.fillRect(barX, barY, barWidth * healthRatio, barHeight);
+        
+        ctx.strokeStyle = '#fff';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(barX, barY, barWidth, barHeight);
       } else {
         // Normal creature rendering
         ctx.fillStyle=c.color;
