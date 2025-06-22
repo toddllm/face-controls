@@ -1042,15 +1042,20 @@
         for (let i = creatures.length - 1; i >= 0; i--) {
           const c = creatures[i];
           if (c !== this.ridingXyz && Math.hypot(c.x - this.x, c.y - this.y) < this.radius + this.eatRadius) {
-            // Can't eat XYZ dragon (too powerful)
+            // Can't eat XYZ dragon (too powerful), but can eat regular Dragons
             if (c instanceof XYZ) {
               continue;
+            }
+            // Special message for eating dragons
+            let eatMessage = "eating";
+            if (c instanceof Dragon) {
+              eatMessage = c.createdByGary ? "EATING MY OWN DRAGON!" : "EATING DRAGON!";
             }
             // Eat the creature
             creatures.splice(i, 1);
             this.totalEaten++;
             this.radius = this.baseRadius + (this.totalEaten * this.growthRate);
-            this.speak("eating"); // Says "not a threat" while eating
+            this.speak(eatMessage); // Says different messages for different creatures
             this.huntTarget = null; // Find new target
           }
         }
@@ -1302,6 +1307,19 @@
         }
       });
       
+      // Dragon creation ability
+      this.dragonCreationTimer = (this.dragonCreationTimer || 0) + dt;
+      if (this.dragonCreationTimer >= 15.0 && Math.random() < 0.3) { // Create dragon every 15 seconds with 30% chance
+        // Create a new dragon near Gary
+        const dragonX = this.x + (Math.random() - 0.5) * 200;
+        const dragonY = this.y + (Math.random() - 0.5) * 200;
+        const newDragon = new Dragon(dragonX, dragonY, canvasElement.width, canvasElement.height);
+        newDragon.createdByGary = true; // Mark as Gary's dragon
+        creatures.push(newDragon);
+        this.speak("DRAGON CREATION!");
+        this.dragonCreationTimer = 0;
+      }
+      
       // Check for Mega Gary transformation
       if (this.canTransform && this.totalEaten >= this.transformationTrigger) {
         // Create Mega Gary instance and replace current Gary
@@ -1518,16 +1536,45 @@
         this.y += (dy/dist) * this.huntSpeed * dt;
       }
       
+      // Enhanced dragon creation ability (more frequent than regular Gary)
+      this.dragonCreationTimer = (this.dragonCreationTimer || 0) + dt;
+      if (this.dragonCreationTimer >= 10.0 && Math.random() < 0.5) { // Create dragon every 10 seconds with 50% chance
+        // Create multiple dragons as Mega Gary
+        const numDragons = Math.random() < 0.3 ? 2 : 1; // 30% chance for 2 dragons
+        for (let d = 0; d < numDragons; d++) {
+          const dragonX = this.x + (Math.random() - 0.5) * 300;
+          const dragonY = this.y + (Math.random() - 0.5) * 300;
+          const newDragon = new Dragon(dragonX, dragonY, canvasElement.width, canvasElement.height);
+          newDragon.createdByGary = true;
+          newDragon.isMegaDragon = true; // Mark as Mega Gary's dragon
+          creatures.push(newDragon);
+        }
+        this.speak("MEGA DRAGON CREATION!");
+        this.dragonCreationTimer = 0;
+      }
+      
       // Enhanced eating with no permanent capture
       this.eatTimer += dt;
       if (this.eatTimer >= this.eatInterval) {
         creatures.forEach((c, i) => {
           if (c !== this.ridingXyz && Math.hypot(c.x - this.x, c.y - this.y) < this.radius + this.eatRadius) {
             if (!(c instanceof XYZ)) {
+              // Special messages for dragons
+              let eatMessage = "MEGA EATING!";
+              if (c instanceof Dragon) {
+                if (c.isMegaDragon) {
+                  eatMessage = "CONSUMING MY MEGA DRAGON!";
+                } else if (c.createdByGary) {
+                  eatMessage = "EATING MY OWN DRAGON!";
+                } else {
+                  eatMessage = "MEGA DRAGON CONSUMPTION!";
+                }
+              }
+              
               creatures.splice(i, 1);
               this.totalEaten++;
               this.radius = Math.min(200, this.baseRadius + (this.totalEaten * this.growthRate));
-              this.speak("MEGA EATING!");
+              this.speak(eatMessage);
               this.huntTarget = null;
             }
           }
@@ -2796,11 +2843,19 @@
     }
   }
   
-  // Start showing messages when page loads
-  document.addEventListener('DOMContentLoaded', () => {
+  // Start showing messages when script loads (since DOMContentLoaded may have already fired)
+  function initializeMessages() {
     displayStarterMessage();
     messageInterval = setInterval(displayStarterMessage, 4000); // Change every 4 seconds
-  });
+  }
+  
+  // Check if DOM is already loaded
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initializeMessages);
+  } else {
+    // DOM is already loaded, initialize immediately
+    initializeMessages();
+  }
   
   // Wait for user gesture to start media
   const startBtn = document.getElementById('startButton');
@@ -3780,6 +3835,42 @@
       ctx.beginPath();
       ctx.arc(s.x, s.y, s.radius, 0, 2*Math.PI);
       ctx.fill();
+    });
+    
+    // Draw AI players
+    aiPlayers.forEach(ai => {
+      ctx.save();
+      
+      // Draw AI player body
+      ctx.fillStyle = ai.color || '#00FF00';
+      ctx.beginPath();
+      ctx.arc(ai.x, ai.y, ai.radius, 0, 2*Math.PI);
+      ctx.fill();
+      
+      // Draw AI player outline
+      ctx.strokeStyle = '#FFFFFF';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(ai.x, ai.y, ai.radius, 0, 2*Math.PI);
+      ctx.stroke();
+      
+      // Draw AI name
+      ctx.fillStyle = '#FFFFFF';
+      ctx.font = 'bold 12px Arial';
+      ctx.textAlign = 'center';
+      ctx.fillText(ai.name, ai.x, ai.y - ai.radius - 10);
+      
+      // Draw strategy indicator
+      ctx.fillStyle = '#FFD700';
+      ctx.font = '10px Arial';
+      ctx.fillText(ai.strategy.toUpperCase(), ai.x, ai.y - ai.radius - 25);
+      
+      // Draw health indicator
+      ctx.fillStyle = '#FF0000';
+      ctx.font = '8px Arial';
+      ctx.fillText(`❤️${ai.lives}`, ai.x, ai.y - ai.radius - 40);
+      
+      ctx.restore();
     });
     
     // Draw villages
