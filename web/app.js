@@ -2699,7 +2699,7 @@
   // Starter message system with tips, tricks, jokes, and code stats
   const starterMessages = [
     {
-      text: "🎮 This game was crafted with 4498 lines of code (including these very messages you're reading right now)!",
+      text: "🎮 This entire project was crafted with 5,396 lines of code across all files (4,544 in game logic + 270 HTML + 582 deployment scripts/configs)!",
       type: "code_stats"
     },
     {
@@ -2812,8 +2812,8 @@
     
     document.getElementById('startScreen').style.display = 'none';
     
-    // Show Elder Portal button
-    document.getElementById('elderPortalButton').style.display = 'block';
+    // Show Portal buttons
+    document.getElementById('portalButtons').style.display = 'flex';
     
     // On iOS, we need to request fullscreen for proper video permissions
     if (isMobile && /iPhone|iPad|iPod/i.test(navigator.userAgent)) {
@@ -2839,13 +2839,59 @@
       
       // Optional: disable button temporarily to prevent spam
       elderPortalBtn.disabled = true;
-      elderPortalBtn.textContent = 'Portal Opening...';
+      elderPortalBtn.textContent = '🏰 Portal Opening...';
       
       setTimeout(() => {
         elderPortalBtn.disabled = false;
-        elderPortalBtn.textContent = 'Build Portal to Elder';
+        elderPortalBtn.textContent = '🏰 Build Portal to Elder';
       }, 6000); // Re-enable after 6 seconds
     }
+  });
+
+  // Dungeon Portal button functionality
+  const dungeonPortalBtn = document.getElementById('dungeonPortalButton');
+  dungeonPortalBtn.addEventListener('click', () => {
+    if (!dungeonDimensionActive) {
+      // Create Dungeon Dimension portal at random location
+      const portalX = Math.random() * (canvasElement.width - 200) + 100;
+      const portalY = Math.random() * (canvasElement.height - 200) + 100;
+      portals.push(new DimensionPortal(portalX, portalY, 'dungeon'));
+      
+      // Disable button temporarily to prevent spam
+      dungeonPortalBtn.disabled = true;
+      dungeonPortalBtn.textContent = '🗡️ Portal Opening...';
+      
+      setTimeout(() => {
+        dungeonPortalBtn.disabled = false;
+        dungeonPortalBtn.textContent = '🗡️ Build Portal to Dungeon';
+      }, 6000); // Re-enable after 6 seconds
+    }
+  });
+
+  // Normal Portal button functionality (return to normal dimension)
+  const normalPortalBtn = document.getElementById('normalPortalButton');
+  normalPortalBtn.addEventListener('click', () => {
+    // Reset all dimension states
+    elderDimensionActive = false;
+    dungeonDimensionActive = false;
+    currentDimension = 'Normal';
+    
+    // Clear existing creatures and bosses from other dimensions
+    creatures.length = 0;
+    
+    // Reset Gary boss if needed
+    if (garyBoss) {
+      garyBoss = null;
+    }
+    
+    // Disable button temporarily
+    normalPortalBtn.disabled = true;
+    normalPortalBtn.textContent = '🏠 Returning...';
+    
+    setTimeout(() => {
+      normalPortalBtn.disabled = false;
+      normalPortalBtn.textContent = '🏠 Return to Normal';
+    }, 3000); // Re-enable after 3 seconds
   });
 
   // Enable touch events for mobile
