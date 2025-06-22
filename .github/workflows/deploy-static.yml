@@ -28,11 +28,6 @@ jobs:
       - name: Print AWS CLI version
         run: aws --version
 
-      - name: Test AWS credentials
-        run: |
-          echo "Testing AWS credentials..."
-          aws sts get-caller-identity || echo "Failed to get caller identity"
-
       - name: Sync web/ to S3
         run: |
           # Sync HTML files with no-cache headers

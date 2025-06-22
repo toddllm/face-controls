@@ -7,3 +7,5 @@ fastapi
 uvicorn[standard]
 python-dotenv
 pyttsx3
+openai
+elevenlabs
