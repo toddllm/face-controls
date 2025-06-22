@@ -34,6 +34,16 @@
   
   window.addEventListener('resize', onResize);
   onResize();
+  
+  // Keyboard handling for portal creation
+  window.addEventListener('keydown', (e) => {
+    if (e.key.toLowerCase() === 'p' && !elderDimensionActive && waveIndex >= 5) {
+      // Create Elder Dimension portal
+      const portalX = Math.random() * (canvasElement.width - 200) + 100;
+      const portalY = Math.random() * (canvasElement.height - 200) + 100;
+      portals.push(new ElderPortal(portalX, portalY));
+    }
+  });
   // --- Game entity classes ---
   class Creature {
     constructor(cx, cy, sw, sh) {
@@ -68,6 +78,201 @@
   }
   class Fireball extends Laser { constructor(x,y,vx,vy){ super(x,y,vx,vy); this.color='orange'; this.radius=8; }}
   class PurpleLaser extends Laser { constructor(x,y,vx,vy){ super(x,y,vx,vy); this.color='purple'; this.radius=6; }}
+  
+  // Snake projectile for XYZ
+  class Snake extends Laser {
+    constructor(x, y, targetX, targetY) {
+      const dx = targetX - x, dy = targetY - y;
+      const dist = Math.hypot(dx, dy) || 1e-6;
+      super(x, y, dx/dist * 250, dy/dist * 250);
+      this.radius = 10;
+      this.color = 'lightgreen';
+      this.wiggleAngle = 0;
+    }
+    update(dt) {
+      this.wiggleAngle += dt * 10;
+      const offset = Math.sin(this.wiggleAngle) * 30;
+      const perpX = -this.vy / Math.hypot(this.vx, this.vy);
+      const perpY = this.vx / Math.hypot(this.vx, this.vy);
+      this.x += this.vx * dt + perpX * offset * dt;
+      this.y += this.vy * dt + perpY * offset * dt;
+      if (this.x < 0 || this.x > canvasElement.width || this.y < 0 || this.y > canvasElement.height) {
+        this.active = false;
+      }
+    }
+  }
+  
+  // XYZ creature (honsil) that Gary rides
+  class XYZ extends BaseBoss {
+    constructor(cx, cy) {
+      super(cx, cy);
+      this.radius = 60;
+      this.health = 100;
+      this.color = '#663399';
+      this.snakeInterval = 2.0;
+      this.snakeTimer = 0;
+      this.dashInterval = 5.0;
+      this.dashTimer = 0;
+      this.dashing = false;
+      this.dashDuration = 0.8;
+      this.dashTime = 0;
+      this.dashVx = 0;
+      this.dashVy = 0;
+    }
+    update(dt, tx, ty) {
+      if (!this.dashing) {
+        super.update(dt, tx, ty);
+        this.dashTimer += dt;
+        if (this.dashTimer >= this.dashInterval) {
+          this.dashing = true;
+          this.dashTime = 0;
+          this.dashTimer = 0;
+          const dx = tx - this.x;
+          const dy = ty - this.y;
+          const dist = Math.hypot(dx, dy) || 1e-6;
+          this.dashVx = dx/dist * 500;
+          this.dashVy = dy/dist * 500;
+        }
+      } else {
+        this.dashTime += dt;
+        this.x += this.dashVx * dt;
+        this.y += this.dashVy * dt;
+        if (this.dashTime >= this.dashDuration) {
+          this.dashing = false;
+        }
+      }
+      // Snake attacks
+      this.snakeTimer += dt;
+      if (this.snakeTimer >= this.snakeInterval) {
+        snakes.push(new Snake(this.x, this.y, tx, ty));
+        this.snakeTimer = 0;
+      }
+    }
+  }
+  
+  // Gary boss with eye-contact mechanic
+  class GaryBoss extends BaseBoss {
+    constructor(cx, cy, isShadow = false) {
+      super(cx, cy);
+      this.isShadow = isShadow;
+      this.radius = 45;
+      this.health = isShadow ? 80 : 60;
+      this.color = isShadow ? '#330033' : '#FF69B4';
+      this.ridingXyz = null;
+      this.attackInterval = 1.5;
+      this.attackTimer = 0;
+      this.beingLookedAt = false;
+      this.angerLevel = 0;
+      this.provoked = false;
+      this.teleportInterval = isShadow ? 4.0 : 6.0;
+      this.teleportTimer = 0;
+      this.crystalInterval = 2.5;
+      this.crystalTimer = 0;
+      this.ignoresPause = true;
+    }
+    checkEyeContact(metricsList, centers) {
+      this.beingLookedAt = false;
+      for (let i = 0; i < metricsList.length; i++) {
+        const m = metricsList[i];
+        const [cx, cy] = centers[i];
+        // Check if player is looking at Gary
+        const dx = this.x - cx;
+        const dy = this.y - cy;
+        const dist = Math.hypot(dx, dy);
+        if (dist < 300) {
+          // Simple check: if eyes are open and face is pointed toward Gary
+          if (!m.eyes_closed) {
+            this.beingLookedAt = true;
+            if (!this.provoked) {
+              this.angerLevel = Math.min(this.angerLevel + 0.02, 1.0);
+              if (this.angerLevel >= 1.0) {
+                this.provoked = true;
+              }
+            }
+            break;
+          }
+        }
+      }
+    }
+    update(dt, tx, ty, metricsList, centers) {
+      // Always update even during pause
+      if (this.ridingXyz && this.ridingXyz.health > 0) {
+        // Ride on top of XYZ
+        this.x = this.ridingXyz.x;
+        this.y = this.ridingXyz.y - 50;
+      } else {
+        super.update(dt, tx, ty);
+      }
+      
+      // Check eye contact
+      if (metricsList && centers) {
+        this.checkEyeContact(metricsList, centers);
+      }
+      
+      // Attacks only if not being looked at (or if provoked)
+      if (!this.beingLookedAt || this.provoked) {
+        this.attackTimer += dt;
+        if (this.attackTimer >= this.attackInterval) {
+          // Crystal throw
+          const dx = tx - this.x;
+          const dy = ty - this.y;
+          const dist = Math.hypot(dx, dy) || 1e-6;
+          const vx = dx/dist * 300;
+          const vy = dy/dist * 300;
+          const crystal = new PurpleLaser(this.x, this.y, vx, vy);
+          crystal.color = this.isShadow ? '#FF00FF' : '#FFB6C1';
+          lasers.push(crystal);
+          this.attackTimer = 0;
+        }
+      }
+      
+      // Teleportation
+      this.teleportTimer += dt;
+      if (this.teleportTimer >= this.teleportInterval) {
+        if (this.isShadow) {
+          // Shadow Gary teleports to dark corners
+          const corners = [[50, 50], [canvasElement.width-50, 50], 
+                          [50, canvasElement.height-50], [canvasElement.width-50, canvasElement.height-50]];
+          const corner = corners[Math.floor(Math.random() * corners.length)];
+          this.x = corner[0];
+          this.y = corner[1];
+        } else {
+          // Normal Gary random teleport
+          this.x = Math.random() * (canvasElement.width - 100) + 50;
+          this.y = Math.random() * (canvasElement.height - 100) + 50;
+        }
+        this.teleportTimer = 0;
+      }
+    }
+  }
+  
+  // Elder Dimension Portal
+  class ElderPortal {
+    constructor(x, y) {
+      this.x = x;
+      this.y = y;
+      this.radius = 40;
+      this.active = true;
+      this.pulse = 0;
+      this.spawnTimer = 0;
+      this.garySpawned = false;
+    }
+    update(dt) {
+      this.pulse += dt * 2;
+      this.spawnTimer += dt;
+      if (this.spawnTimer >= 5.0 && !this.garySpawned) {
+        // Spawn Gary from portal
+        const isShadow = Math.random() < 0.01; // 1% chance for Shadow Gary
+        garyBoss = new GaryBoss(this.x, this.y, isShadow);
+        // Also spawn XYZ for Gary to ride
+        const xyz = new XYZ(this.x, this.y + 100);
+        garyBoss.ridingXyz = xyz;
+        creatures.push(xyz);
+        this.garySpawned = true;
+        elderDimensionActive = true;
+      }
+    }
+  }
   class BaseBoss {
     constructor(cx,cy){ this.x=cx; this.y=cy-150; this.radius=40; this.health=20; this.speed=60; this.color='purple'; this.angle=0;
       this.minionTimer = 0;
@@ -125,6 +330,10 @@
   const creatures = [];
   const lasers = [];
   const fireballs = [];
+  const snakes = [];
+  const portals = [];
+  let garyBoss = null;
+  let elderDimensionActive = false;
   let boss = null;
   let waveIndex = 0;
   let waveKills = 0;
@@ -410,6 +619,50 @@
       else survivors.push(c);
     });
     creatures.splice(0, creatures.length, ...survivors);
+    
+    // Snake collisions with players
+    snakes.forEach(s => {
+      centers.forEach((cen, i) => {
+        if (invulTimers[i] <= 0 && Math.hypot(s.x - cen[0], s.y - cen[1]) < s.radius + 50) {
+          playerLives[i] = (playerLives[i] || 3) - 1;
+          invulTimers[i] = 2.0;
+          if (playerLives[i] <= 0) {
+            playerLives[i] = 3;
+            invulTimers[i] = 2.0;
+          }
+          s.active = false;
+        }
+      });
+    });
+    snakes = snakes.filter(s => s.active);
+    
+    // Gary attacks (melee damage)
+    if (garyBoss && (!garyBoss.beingLookedAt || garyBoss.provoked)) {
+      centers.forEach((cen, i) => {
+        if (invulTimers[i] <= 0 && Math.hypot(garyBoss.x - cen[0], garyBoss.y - cen[1]) < garyBoss.radius + 50) {
+          playerLives[i] = (playerLives[i] || 3) - 2; // Gary does double damage
+          invulTimers[i] = 2.0;
+          if (playerLives[i] <= 0) {
+            playerLives[i] = 3;
+            invulTimers[i] = 2.0;
+          }
+        }
+      });
+    }
+    
+    // Gary takes damage (when not being looked at)
+    if (garyBoss && !garyBoss.beingLookedAt) {
+      lasers.forEach(l => {
+        if (l.active && Math.hypot(garyBoss.x - l.x, garyBoss.y - l.y) < garyBoss.radius + l.radius) {
+          garyBoss.health -= 1;
+          l.active = false;
+          if (garyBoss.health <= 0) {
+            garyBoss = null;
+            elderDimensionActive = false;
+          }
+        }
+      });
+    }
     // Update creatures
     creatures.forEach(c=>c.update(dt,canvasElement.width/2,canvasElement.height/2));
     // Collision: creatures with avatars
@@ -523,9 +776,19 @@
         }
       });
     }
-    // Update lasers/fireballs
+    // Update lasers/fireballs/snakes
     lasers.forEach(l=>l.update(dt));
     fireballs.forEach(f=>f.update(dt));
+    snakes.forEach(s=>s.update(dt));
+    
+    // Update portals
+    portals.forEach(p=>p.update(dt));
+    
+    // Update Gary (always, even during pause)
+    if (garyBoss) {
+      const nearestCenter = centers[0] || [canvasElement.width/2, canvasElement.height/2];
+      garyBoss.update(dt, nearestCenter[0], nearestCenter[1], metricsList, centers);
+    }
     // Render
     ctx.clearRect(0,0,canvasElement.width,canvasElement.height);
     // Draw level and monster counter to the right of the video overlay
@@ -568,6 +831,16 @@
         ctx.restore();
       }
     }
+    // Show Elder Dimension hint
+    if (elderDimensionActive) {
+      ctx.font = 'bold 20px Arial';
+      ctx.fillStyle = '#DA70D6';
+      ctx.fillText('Elder Dimension Active!', overlayLeft, 110);
+    } else if (!portals.length && waveIndex >= 5) {
+      ctx.font = 'bold 18px Arial';
+      ctx.fillStyle = '#BBB';
+      ctx.fillText('Press P to open Elder Portal', overlayLeft, 110);
+    }
     ctx.restore();
     // Draw mouth capture effects
     mouthCaptureEffects = mouthCaptureEffects.filter(e=>e.t<0.4);
@@ -595,8 +868,127 @@
       ctx.restore();
     });
     creatures.forEach(c=>{ctx.fillStyle=c.color;ctx.beginPath();ctx.arc(c.x,c.y,c.radius,0,2*Math.PI);ctx.fill();});
-    lasers.forEach(l=>{ctx.fillStyle='red';ctx.beginPath();ctx.arc(l.x,l.y,l.radius,0,2*Math.PI);ctx.fill();});
+    lasers.forEach(l=>{ctx.fillStyle=l.color||'red';ctx.beginPath();ctx.arc(l.x,l.y,l.radius,0,2*Math.PI);ctx.fill();});
     fireballs.forEach(f=>{ctx.fillStyle='orange';ctx.beginPath();ctx.arc(f.x,f.y,f.radius,0,2*Math.PI);ctx.fill();});
+    
+    // Draw snakes
+    snakes.forEach(s => {
+      ctx.fillStyle = s.color || 'lightgreen';
+      ctx.beginPath();
+      ctx.arc(s.x, s.y, s.radius, 0, 2*Math.PI);
+      ctx.fill();
+    });
+    
+    // Draw portals
+    portals.forEach(p => {
+      const pulseR = p.radius + Math.sin(p.pulse) * 10;
+      ctx.save();
+      ctx.strokeStyle = '#8B008B';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, pulseR, 0, 2*Math.PI);
+      ctx.stroke();
+      // Inner swirl
+      for (let angle = 0; angle < 360; angle += 30) {
+        const rad = angle * Math.PI / 180 + p.pulse * 50;
+        const innerX = p.x + Math.cos(rad) * (pulseR - 10);
+        const innerY = p.y + Math.sin(rad) * (pulseR - 10);
+        ctx.fillStyle = '#DA70D6';
+        ctx.beginPath();
+        ctx.arc(innerX, innerY, 5, 0, 2*Math.PI);
+        ctx.fill();
+      }
+      ctx.restore();
+    });
+    
+    // Draw Gary boss
+    if (garyBoss) {
+      // Draw XYZ if Gary is riding it
+      if (garyBoss.ridingXyz && garyBoss.ridingXyz.health > 0) {
+        const xyz = garyBoss.ridingXyz;
+        ctx.fillStyle = xyz.color;
+        ctx.beginPath();
+        ctx.arc(xyz.x, xyz.y, xyz.radius, 0, 2*Math.PI);
+        ctx.fill();
+        // XYZ spikes
+        ctx.save();
+        ctx.strokeStyle = '#4B0082';
+        ctx.lineWidth = 3;
+        for (let angle = 0; angle < 360; angle += 45) {
+          const rad = angle * Math.PI / 180;
+          const spikeX = xyz.x + Math.cos(rad) * xyz.radius;
+          const spikeY = xyz.y + Math.sin(rad) * xyz.radius;
+          const endX = xyz.x + Math.cos(rad) * (xyz.radius + 15);
+          const endY = xyz.y + Math.sin(rad) * (xyz.radius + 15);
+          ctx.beginPath();
+          ctx.moveTo(spikeX, spikeY);
+          ctx.lineTo(endX, endY);
+          ctx.stroke();
+        }
+        ctx.restore();
+      }
+      
+      // Draw Gary
+      let garyCol = garyBoss.color;
+      if (garyBoss.beingLookedAt && !garyBoss.provoked) {
+        garyCol = '#FFB6C1'; // Peaceful pink
+      } else if (garyBoss.provoked) {
+        garyCol = '#FF1493'; // Angry deep pink
+      }
+      
+      ctx.fillStyle = garyCol;
+      ctx.beginPath();
+      ctx.arc(garyBoss.x, garyBoss.y, garyBoss.radius, 0, 2*Math.PI);
+      ctx.fill();
+      
+      // Gary's crystal crown
+      ctx.save();
+      ctx.fillStyle = '#FF00FF';
+      for (let i = 0; i < 5; i++) {
+        const angle = i * 72 - 90;
+        const rad = angle * Math.PI / 180;
+        const crownX = garyBoss.x + Math.cos(rad) * (garyBoss.radius - 10);
+        const crownY = garyBoss.y - garyBoss.radius + Math.sin(rad) * 10;
+        ctx.beginPath();
+        ctx.moveTo(crownX, crownY - 10);
+        ctx.lineTo(crownX - 5, crownY);
+        ctx.lineTo(crownX + 5, crownY);
+        ctx.closePath();
+        ctx.fill();
+      }
+      
+      // Gary's eyes (red when angry)
+      ctx.fillStyle = garyBoss.provoked ? '#FF0000' : '#C71585';
+      ctx.beginPath();
+      ctx.arc(garyBoss.x - 10, garyBoss.y - 5, 5, 0, 2*Math.PI);
+      ctx.arc(garyBoss.x + 10, garyBoss.y - 5, 5, 0, 2*Math.PI);
+      ctx.fill();
+      
+      // Health bar for Gary
+      const garyMaxHealth = garyBoss.isShadow ? 80 : 60;
+      const hbW = 100, hbH = 10;
+      const hbX = garyBoss.x - hbW/2;
+      const hbY = garyBoss.y - garyBoss.radius - 30;
+      ctx.fillStyle = '#400040';
+      ctx.fillRect(hbX, hbY, hbW, hbH);
+      const hpRatio = Math.max(0, garyBoss.health / garyMaxHealth);
+      ctx.fillStyle = garyBoss.isShadow ? '#FF00FF' : '#FF69B4';
+      ctx.fillRect(hbX, hbY, hbW * hpRatio, hbH);
+      ctx.strokeStyle = '#FFF';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(hbX, hbY, hbW, hbH);
+      
+      // Label for Gary
+      ctx.save();
+      ctx.font = 'bold 16px Arial';
+      ctx.fillStyle = '#FFF';
+      ctx.textAlign = 'center';
+      let label = garyBoss.isShadow ? 'Shadow Gary' : 'Gary';
+      if (garyBoss.ridingXyz) label += ' riding XYZ';
+      ctx.fillText(label, garyBoss.x, garyBoss.y - garyBoss.radius - 40);
+      ctx.restore();
+    }
+    
     if(boss){ctx.fillStyle=boss.color;ctx.beginPath();ctx.arc(boss.x,boss.y,boss.radius,0,2*Math.PI);ctx.fill();}
     // Draw avatars with arms/hands
     metricsList.forEach((m,i)=>{
