@@ -102,6 +102,36 @@
     }
   }
   
+  // Gary's Fang attack
+  class Fang extends Laser {
+    constructor(x, y, targetX, targetY) {
+      const dx = targetX - x, dy = targetY - y;
+      const dist = Math.hypot(dx, dy) || 1e-6;
+      super(x, y, dx/dist * 400, dy/dist * 400);
+      this.radius = 12;
+      this.color = '#8B008B';
+      this.stopRespawn = true;
+    }
+  }
+  
+  // Village class
+  class Village {
+    constructor(x, y) {
+      this.x = x;
+      this.y = y;
+      this.radius = 40;
+      this.health = 5;
+      this.maxHealth = 5;
+      this.destroyed = false;
+    }
+    takeDamage() {
+      this.health--;
+      if (this.health <= 0) {
+        this.destroyed = true;
+      }
+    }
+  }
+  
   // Helper function to spawn a random minion at (x, y)
   function spawnRandomMinion(x, y, sw, sh) {
     const minionTypes = [Creature, Snowie, FireSpinner, Ghost, Skeleton, Caster, Dragon];
@@ -145,17 +175,63 @@
       this.dashTime = 0;
       this.dashVx = 0;
       this.dashVy = 0;
+      this.villageTarget = null;
+      this.villageAttackTimer = 0;
     }
     update(dt, tx, ty) {
+      // Target villages if they exist
+      if (villages.length > 0 && !this.villageTarget) {
+        // Find nearest village
+        let nearest = null;
+        let nearestDist = Infinity;
+        villages.forEach(v => {
+          if (!v.destroyed) {
+            const dist = Math.hypot(v.x - this.x, v.y - this.y);
+            if (dist < nearestDist) {
+              nearestDist = dist;
+              nearest = v;
+            }
+          }
+        });
+        this.villageTarget = nearest;
+      }
+      
+      // Move towards village if targeting one
+      const targetX = this.villageTarget && !this.villageTarget.destroyed ? this.villageTarget.x : tx;
+      const targetY = this.villageTarget && !this.villageTarget.destroyed ? this.villageTarget.y : ty;
+      
       if (!this.dashing) {
-        super.update(dt, tx, ty);
+        if (this.villageTarget && !this.villageTarget.destroyed) {
+          // Move directly towards village
+          const dx = targetX - this.x;
+          const dy = targetY - this.y;
+          const dist = Math.hypot(dx, dy) || 1e-6;
+          this.x += (dx/dist) * this.speed * 2 * dt;
+          this.y += (dy/dist) * this.speed * 2 * dt;
+          
+          // Attack village when close
+          if (dist < this.radius + this.villageTarget.radius) {
+            this.villageAttackTimer += dt;
+            if (this.villageAttackTimer >= 0.5) {
+              this.villageTarget.takeDamage();
+              this.villageAttackTimer = 0;
+              
+              if (this.villageTarget.destroyed) {
+                this.villageTarget = null;
+              }
+            }
+          }
+        } else {
+          super.update(dt, tx, ty);
+        }
+        
         this.dashTimer += dt;
         if (this.dashTimer >= this.dashInterval) {
           this.dashing = true;
           this.dashTime = 0;
           this.dashTimer = 0;
-          const dx = tx - this.x;
-          const dy = ty - this.y;
+          const dx = targetX - this.x;
+          const dy = targetY - this.y;
           const dist = Math.hypot(dx, dy) || 1e-6;
           this.dashVx = dx/dist * 500;
           this.dashVy = dy/dist * 500;
@@ -171,7 +247,7 @@
       // Snake attacks
       this.snakeTimer += dt;
       if (this.snakeTimer >= this.snakeInterval) {
-        snakes.push(new Snake(this.x, this.y, tx, ty));
+        snakes.push(new Snake(this.x, this.y, targetX, targetY));
         this.snakeTimer = 0;
       }
     }
@@ -308,22 +384,21 @@
       this.teleportTimer = 0;
       this.crystalInterval = 2.5;
       this.crystalTimer = 0;
+      this.fangInterval = 3.0;
+      this.fangTimer = 0;
       this.ignoresPause = true;
       // New features
       this.scannerDucky = new ScannerDucky(this);
       this.heldItem = null; // Can be 'remote', 'weapon', etc.
       this.spaceJail = null;
-      this.voiceLines = [
-        "I see you there!",
-        "Stop looking at me!",
-        "My ducky says you're dangerous!",
-        "Time for space jail!",
-        "XYZ, let's ride!",
-        "You can't escape my scanner!"
-      ];
       this.voiceTimer = 0;
-      this.voiceInterval = 5.0;
+      this.voiceInterval = 8.0; // Increased interval for audio
       this.lastVoiceLine = "";
+      
+      // Audio setup for Gary's voice
+      this.audio = new Audio('../gary.mp3');
+      this.audio.volume = 0.7;
+      this.audioPlaying = false;
     }
     checkEyeContact(metricsList, centers) {
       this.beingLookedAt = false;
@@ -356,13 +431,36 @@
         this.scannerDucky.scan(creatures, boss, centers);
         this.scannerDucky.scanTimer = 0;
         
+        // Attack all intruders in Elder Dimension
+        if (elderDimensionActive) {
+          creatures.forEach((c, idx) => {
+            // Attack anything that's not XYZ
+            if (!(c instanceof XYZ)) {
+              const result = this.scannerDucky.scanResults.get(c);
+              if (result && result.threat !== 'safe') {
+                // Instant kill intruders
+                creatures.splice(idx, 1);
+                this.speak("");
+                
+                // Build army data from scanned powers
+                if (!this.army) this.army = [];
+                this.army.push({
+                  type: c.constructor.name,
+                  powers: result.powers,
+                  threat: result.threat
+                });
+              }
+            }
+          });
+        }
+        
         // Check for safe creatures to ride
         if (!this.ridingXyz && !this.ridingShip) {
           creatures.forEach(c => {
             if (this.scannerDucky.isSafeToRide(c) && Math.hypot(c.x - this.x, c.y - this.y) < 100) {
               // Ride the safe creature
               this.ridingXyz = c;
-              this.speak("My ducky says this one is safe to ride!");
+              this.speak("");
             }
           });
         }
@@ -414,8 +512,7 @@
       // Voice talking
       this.voiceTimer += dt;
       if (this.voiceTimer >= this.voiceInterval) {
-        const line = this.voiceLines[Math.floor(Math.random() * this.voiceLines.length)];
-        this.speak(line);
+        this.speak(""); // Just play the audio
         this.voiceTimer = 0;
       }
       
@@ -434,11 +531,39 @@
           lasers.push(crystal);
           this.attackTimer = 0;
         }
+        
+        // Fang attack
+        this.fangTimer += dt;
+        if (this.fangTimer >= this.fangInterval && creatures.length > 0) {
+          // Target nearest creature
+          let nearestCreature = null;
+          let nearestDist = Infinity;
+          creatures.forEach(c => {
+            const dist = Math.hypot(c.x - this.x, c.y - this.y);
+            if (dist < nearestDist && !(c instanceof XYZ)) {
+              nearestDist = dist;
+              nearestCreature = c;
+            }
+          });
+          
+          if (nearestCreature) {
+            const fang = new Fang(this.x, this.y, nearestCreature.x, nearestCreature.y);
+            lasers.push(fang);
+            this.fangTimer = 0;
+            this.speak("");
+          }
+        }
       }
       
       // Teleportation
       this.teleportTimer += dt;
       if (this.teleportTimer >= this.teleportInterval) {
+        // If riding XYZ, teleport off its back
+        if (this.ridingXyz) {
+          this.ridingXyz = null;
+          this.speak("Time to teleport off XYZ!");
+        }
+        
         if (this.isShadow) {
           // Shadow Gary teleports to dark corners
           const corners = [[50, 50], [canvasElement.width-50, 50], 
@@ -469,8 +594,15 @@
     }
     
     speak(text) {
-      this.lastVoiceLine = text;
-      console.log(`Gary says: ${text}`);
+      // Play audio instead of showing text
+      if (!this.audioPlaying) {
+        this.audio.currentTime = 0;
+        this.audio.play().catch(e => console.log('Audio play failed:', e));
+        this.audioPlaying = true;
+        this.audio.onended = () => {
+          this.audioPlaying = false;
+        };
+      }
     }
   }
   
@@ -506,6 +638,13 @@
         
         this.garySpawned = true;
         elderDimensionActive = true;
+        
+        // Spawn villages around the map
+        for (let i = 0; i < 3; i++) {
+          const vx = Math.random() * (canvasElement.width - 200) + 100;
+          const vy = Math.random() * (canvasElement.height - 200) + 100;
+          villages.push(new Village(vx, vy));
+        }
         
         // Portal disappears after spawning
         const portalIndex = portals.indexOf(this);
@@ -556,6 +695,7 @@
   const fireballs = [];
   let snakes = [];
   const portals = [];
+  const villages = [];
   let garyBoss = null;
   let elderDimensionActive = false;
   let boss = null;
@@ -567,6 +707,8 @@
   const killTargets = [20,30,40,50,60,70,80,90,100,120];
   let playerLives = [];
   let invulTimers = [];
+  let eatenByGary = []; // Track which players were eaten
+  let noRespawnCreatures = new Set(); // Creatures hit by fang can't respawn
   let paused = false;
   let pauseOverlay = null;
 
@@ -766,7 +908,7 @@
     lastTime = now;
     getMicData();
     const nowSec = performance.now()/1000;
-    if(state === 'minions' && nowSec - lastSpawn > spawnInterval) {
+    if(state === 'minions' && nowSec - lastSpawn > spawnInterval && !elderDimensionActive) {
       const r = Math.random();
       const types = [Creature, Snowie, FireSpinner, Ghost, Skeleton, Caster, Dragon];
       const Type = types[Math.floor(r*types.length)];
@@ -886,12 +1028,14 @@
     // Gary attacks (melee damage)
     if (garyBoss && (!garyBoss.beingLookedAt || garyBoss.provoked)) {
       centers.forEach((cen, i) => {
-        if (invulTimers[i] <= 0 && Math.hypot(garyBoss.x - cen[0], garyBoss.y - cen[1]) < garyBoss.radius + 50) {
+        if (!eatenByGary[i] && invulTimers[i] <= 0 && Math.hypot(garyBoss.x - cen[0], garyBoss.y - cen[1]) < garyBoss.radius + 50) {
           playerLives[i] = (playerLives[i] || 3) - 2; // Gary does double damage
           invulTimers[i] = 2.0;
           if (playerLives[i] <= 0) {
-            playerLives[i] = 3;
-            invulTimers[i] = 2.0;
+            // Player eaten by Gary - no respawn
+            eatenByGary[i] = true;
+            playerLives[i] = 0;
+            garyBoss.speak("");
           }
         }
       });
@@ -1126,6 +1270,50 @@
       ctx.fill();
     });
     
+    // Draw villages
+    villages.forEach(v => {
+      if (!v.destroyed) {
+        // Draw village buildings
+        ctx.save();
+        ctx.fillStyle = '#8B4513';
+        ctx.fillRect(v.x - 30, v.y - 20, 20, 30);
+        ctx.fillRect(v.x - 5, v.y - 25, 25, 35);
+        ctx.fillRect(v.x + 10, v.y - 15, 20, 25);
+        
+        // Roofs
+        ctx.fillStyle = '#A52A2A';
+        ctx.beginPath();
+        ctx.moveTo(v.x - 35, v.y - 20);
+        ctx.lineTo(v.x - 20, v.y - 35);
+        ctx.lineTo(v.x - 5, v.y - 20);
+        ctx.fill();
+        
+        ctx.beginPath();
+        ctx.moveTo(v.x - 10, v.y - 25);
+        ctx.lineTo(v.x + 7.5, v.y - 40);
+        ctx.lineTo(v.x + 25, v.y - 25);
+        ctx.fill();
+        
+        // Health bar
+        const barWidth = 60;
+        const barHeight = 8;
+        const barX = v.x - barWidth/2;
+        const barY = v.y - v.radius - 20;
+        
+        ctx.fillStyle = '#333';
+        ctx.fillRect(barX, barY, barWidth, barHeight);
+        
+        const healthRatio = v.health / v.maxHealth;
+        ctx.fillStyle = healthRatio > 0.5 ? '#0f0' : (healthRatio > 0.2 ? '#ff0' : '#f00');
+        ctx.fillRect(barX, barY, barWidth * healthRatio, barHeight);
+        
+        ctx.strokeStyle = '#fff';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(barX, barY, barWidth, barHeight);
+        ctx.restore();
+      }
+    });
+    
     // Draw portals
     portals.forEach(p => {
       const pulseR = p.radius + Math.sin(p.pulse) * 10;
@@ -1226,6 +1414,35 @@
         ctx.fill();
       }
       
+      // Hellbroken diamond on chest
+      ctx.save();
+      const diamondX = garyBoss.x;
+      const diamondY = garyBoss.y + 10;
+      const diamondSize = 15;
+      
+      // Draw diamond shape with gradient
+      const gradient = ctx.createRadialGradient(diamondX, diamondY, 0, diamondX, diamondY, diamondSize);
+      gradient.addColorStop(0, '#FF1493');
+      gradient.addColorStop(0.5, '#8B008B');
+      gradient.addColorStop(1, '#4B0082');
+      ctx.fillStyle = gradient;
+      
+      ctx.beginPath();
+      ctx.moveTo(diamondX, diamondY - diamondSize);
+      ctx.lineTo(diamondX + diamondSize * 0.7, diamondY);
+      ctx.lineTo(diamondX, diamondY + diamondSize);
+      ctx.lineTo(diamondX - diamondSize * 0.7, diamondY);
+      ctx.closePath();
+      ctx.fill();
+      
+      // Diamond glow effect
+      ctx.shadowColor = '#FF00FF';
+      ctx.shadowBlur = 20;
+      ctx.strokeStyle = '#FFD700';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+      ctx.restore();
+      
       // Gary's eyes (red when angry)
       ctx.fillStyle = garyBoss.provoked ? '#FF0000' : '#C71585';
       ctx.beginPath();
@@ -1318,19 +1535,15 @@
       if (garyBoss.ridingXyz) label += ' riding XYZ';
       else if (garyBoss.ridingShip) label += ' in Ship';
       ctx.fillText(label, garyBoss.x, garyBoss.y - garyBoss.radius - 40);
-      
-      // Show voice line
-      if (garyBoss.lastVoiceLine && garyBoss.voiceTimer < 2) {
-        ctx.font = 'bold 14px Arial';
-        ctx.fillStyle = '#FFD700';
-        ctx.fillText(garyBoss.lastVoiceLine, garyBoss.x, garyBoss.y + garyBoss.radius + 20);
-      }
       ctx.restore();
     }
     
     if(boss){ctx.fillStyle=boss.color;ctx.beginPath();ctx.arc(boss.x,boss.y,boss.radius,0,2*Math.PI);ctx.fill();}
     // Draw avatars with arms/hands
     metricsList.forEach((m,i)=>{
+      // Skip drawing if eaten by Gary
+      if (eatenByGary[i]) return;
+      
       // Mirror avatar horizontally
       const fx = canvasElement.width - (m.faceCoords[0] * sw);
       const fy = m.faceCoords[1] * sh;
@@ -1369,8 +1582,30 @@
       ctx.fill();
       ctx.restore();
       // hearts
-      const hl=playerLives[i]||3;
-      for(let j=0;j<hl;j++){ctx.fillStyle='red';ctx.beginPath();ctx.arc(fx-20+ j*15, fy-70,5,0,2*Math.PI);ctx.fill();}
+      const hl = playerLives[i] || 3;
+      ctx.save();
+      for(let j = 0; j < hl; j++) {
+        const heartX = fx - 20 + j * 20;
+        const heartY = fy - 70;
+        
+        // Draw heart shape
+        ctx.fillStyle = '#FF0000';
+        ctx.beginPath();
+        // Left curve
+        ctx.arc(heartX - 5, heartY, 6, Math.PI, 0);
+        // Right curve
+        ctx.arc(heartX + 5, heartY, 6, Math.PI, 0);
+        // Bottom point
+        ctx.lineTo(heartX, heartY + 12);
+        ctx.closePath();
+        ctx.fill();
+        
+        // Heart outline
+        ctx.strokeStyle = '#8B0000';
+        ctx.lineWidth = 1;
+        ctx.stroke();
+      }
+      ctx.restore();
       // cartoon arms/hands
       const faceX=fx,faceY=fy;
       const scaledHandPositions = handPositions.map(([hx, hy]) => [canvasElement.width - (hx * canvasElement.width / faceCanvas.width), hy * canvasElement.height / faceCanvas.height]);
