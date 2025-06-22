@@ -554,7 +554,7 @@
   const creatures = [];
   const lasers = [];
   const fireballs = [];
-  const snakes = [];
+  let snakes = [];
   const portals = [];
   let garyBoss = null;
   let elderDimensionActive = false;

@@ -35,13 +35,34 @@ jobs:
 
       - name: Sync web/ to S3
         run: |
-          aws s3 sync web/ s3://$S3_BUCKET --delete
+          # Sync HTML files with no-cache headers
+          aws s3 sync web/ s3://$S3_BUCKET --delete \
+            --exclude "*" \
+            --include "*.html" \
+            --cache-control "no-cache, no-store, must-revalidate" \
+            --metadata-directive REPLACE
+          
+          # Sync JS/CSS files with short cache (5 minutes)
+          aws s3 sync web/ s3://$S3_BUCKET \
+            --exclude "*.html" \
+            --include "*.js" --include "*.css" \
+            --cache-control "max-age=300, must-revalidate" \
+            --metadata-directive REPLACE
+          
+          # Sync other assets with standard cache (1 hour)
+          aws s3 sync web/ s3://$S3_BUCKET \
+            --exclude "*.html" --exclude "*.js" --exclude "*.css" \
+            --cache-control "max-age=3600" \
+            --metadata-directive REPLACE
         env:
           S3_BUCKET: ${{ secrets.S3_BUCKET }}
 
       - name: Invalidate CloudFront cache
         run: |
-          aws cloudfront create-invalidation --distribution-id $CLOUDFRONT_DISTRIBUTION_ID --paths '/*'
+          # Create more aggressive invalidation
+          aws cloudfront create-invalidation \
+            --distribution-id $CLOUDFRONT_DISTRIBUTION_ID \
+            --paths '/*' '/index.html' '/app.js' '/*.js' '/*.css'
         env:
           CLOUDFRONT_DISTRIBUTION_ID: ${{ secrets.CLOUDFRONT_DISTRIBUTION_ID }}
 

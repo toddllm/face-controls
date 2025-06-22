@@ -3,6 +3,9 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
   <title>Avatar Game</title>
   <style>
     body, html {
@@ -173,6 +176,11 @@
     <button id="startButton">Start Game</button>
   </div>
   <button id="elderPortalButton" style="display: none;">Build Portal to Elder</button>
-  <script src="app.js"></script>
+  <script>
+    // Force cache refresh with timestamp
+    var script = document.createElement('script');
+    script.src = 'app.js?v=' + Date.now();
+    document.body.appendChild(script);
+  </script>
 </body>
 </html>
