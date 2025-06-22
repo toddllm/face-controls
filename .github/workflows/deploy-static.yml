@@ -23,10 +23,15 @@ jobs:
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ secrets.AWS_REGION || 'us-east-1' }}
+          aws-region: ${{ secrets.AWS_REGION }}
 
       - name: Print AWS CLI version
         run: aws --version
+
+      - name: Test AWS credentials
+        run: |
+          echo "Testing AWS credentials..."
+          aws sts get-caller-identity || echo "Failed to get caller identity"
 
       - name: Sync web/ to S3
         run: |
