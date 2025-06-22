@@ -895,6 +895,12 @@
       this.attachmentTimer = 0;
       this.attachmentInterval = 10.0; // Get new part every 10 seconds
       this.availableParts = ['lightsaber', 'robotArm', 'tank', 'cannon', 'shield', 'wings', 'laser'];
+      
+      // Mega Gary transformation
+      this.canTransform = true;
+      this.transformationTimer = 0;
+      this.transformationTrigger = 50; // Transform after eating 50 things
+      this.hasRockOfAllPower = false;
     }
     checkEyeContact(metricsList, centers) {
       this.beingLookedAt = false;
@@ -1052,9 +1058,16 @@
         // Check players
         centers.forEach((cen, i) => {
           if (!eatenByGary[i] && Math.hypot(cen[0] - this.x, cen[1] - this.y) < this.radius + this.eatRadius) {
-            // Eat the player
-            eatenByGary[i] = true;
-            playerLives[i] = 0;
+            // Damage the player instead of permanent eating
+            playerLives[i] = (playerLives[i] || 3) - 2; // Take 2 lives
+            invulTimers[i] = 1.5;
+            
+            // Normal respawn logic
+            if (playerLives[i] <= 0) {
+              playerLives[i] = 3; // Respawn with full lives
+              invulTimers[i] = 2.0;
+            }
+            
             this.totalEaten++;
             this.radius = this.baseRadius + (this.totalEaten * this.growthRate);
             this.speak("eating"); // Says "not a threat" while eating players
@@ -1285,6 +1298,29 @@
           att.attackTimer = 0;
         }
       });
+      
+      // Check for Mega Gary transformation
+      if (this.canTransform && this.totalEaten >= this.transformationTrigger) {
+        // Create Mega Gary instance and replace current Gary
+        const megaGary = new MegaGary(this.x, this.y);
+        
+        // Transfer state
+        megaGary.totalEaten = this.totalEaten;
+        megaGary.attachments = this.attachments;
+        megaGary.ridingXyz = this.ridingXyz;
+        megaGary.hasRockOfAllPower = this.hasRockOfAllPower;
+        
+        // Replace Gary with Mega Gary in boss array
+        const garyIndex = allBosses.findIndex(boss => boss === this);
+        if (garyIndex > -1) {
+          allBosses[garyIndex] = megaGary;
+        }
+        
+        // Speak transformation line
+        megaGary.speak("MEGA TRANSFORMATION!");
+        
+        return; // End this Gary's update
+      }
     }
     
     speak(context) {
@@ -1295,6 +1331,494 @@
         this.audio.play().catch(e => console.log('Audio play failed:', e));
         this.audioPlaying = true;
         this.audio.onended = () => {
+          this.audioPlaying = false;
+        };
+      }
+    }
+  }
+  
+  // The Rock of All Power - Ultimate artifact that supercharges Gary
+  class RockOfAllPower {
+    constructor(x, y) {
+      this.x = x;
+      this.y = y;
+      this.radius = 25;
+      this.activated = false;
+      this.energyLevel = 1000;
+      this.pulseEffect = 0;
+      this.floatOffset = 0;
+    }
+    
+    update(dt) {
+      this.pulseEffect += dt * 5;
+      this.floatOffset += dt * 2;
+    }
+    
+    render(ctx) {
+      ctx.save();
+      
+      // Floating effect
+      const floatY = this.y + Math.sin(this.floatOffset) * 10;
+      
+      // Outer energy aura
+      const pulseRadius = this.radius + Math.sin(this.pulseEffect) * 15;
+      ctx.fillStyle = `rgba(255, 215, 0, ${0.3 + Math.sin(this.pulseEffect) * 0.2})`;
+      ctx.beginPath();
+      ctx.arc(this.x, floatY, pulseRadius, 0, 2 * Math.PI);
+      ctx.fill();
+      
+      // Main rock
+      ctx.fillStyle = '#FFD700';
+      ctx.beginPath();
+      ctx.arc(this.x, floatY, this.radius, 0, 2 * Math.PI);
+      ctx.fill();
+      
+      // Inner core
+      ctx.fillStyle = '#FF4500';
+      ctx.beginPath();
+      ctx.arc(this.x, floatY, this.radius * 0.6, 0, 2 * Math.PI);
+      ctx.fill();
+      
+      // Power runes
+      ctx.strokeStyle = '#FFFFFF';
+      ctx.lineWidth = 3;
+      for (let i = 0; i < 6; i++) {
+        const angle = (i / 6) * Math.PI * 2 + this.pulseEffect * 0.5;
+        const runeX = this.x + Math.cos(angle) * this.radius * 0.8;
+        const runeY = floatY + Math.sin(angle) * this.radius * 0.8;
+        ctx.beginPath();
+        ctx.arc(runeX, runeY, 3, 0, 2 * Math.PI);
+        ctx.stroke();
+      }
+      
+      ctx.restore();
+    }
+  }
+  
+  // Mega Gary - Super form with 1000x power and enhanced abilities
+  class MegaGary extends GaryBoss {
+    constructor(cx, cy) {
+      super(cx, cy, false);
+      
+      // Enhanced stats (1000x power/hardness)
+      this.radius = 90; // Larger size
+      this.health = 999999; // Even more immortal
+      this.maxHealth = 999999;
+      this.color = '#FF0000'; // Red eyes effect
+      this.huntSpeed = 300; // Faster
+      this.eatRadius = 60; // Larger eating range
+      this.growthRate = 5; // Faster growth
+      
+      // Visual enhancements
+      this.eyeColor = '#FF0000'; // Red eyes
+      this.gownSize = 1.5; // Larger gown
+      this.energyAura = 0;
+      this.powerLevel = 1000;
+      
+      // Mega abilities
+      this.vortexTimer = 0;
+      this.vortexInterval = 8.0;
+      this.vortexActive = false;
+      this.vortexRadius = 150;
+      this.vortexPower = 500;
+      
+      // Enhanced effects
+      this.netheriteEffect = 0;
+      this.lintherTimer = 0;
+      this.blueFlameTimer = 0;
+      this.pokeballFlowerTimer = 0;
+      
+      // The Rock of All Power connection
+      this.rockOfAllPower = null;
+      this.rockPowerLevel = 1;
+      this.overcharging = false;
+      this.instability = 0;
+      
+      // End dimension teleportation
+      this.canTeleportToEnd = true;
+      this.endDimensionTimer = 0;
+      this.endDimensionInterval = 15.0;
+      
+      // Enhanced audio
+      this.megaAudio = new Audio('gary.mp3');
+      this.megaAudio.volume = 1.0; // Louder
+    }
+    
+    update(dt, tx, ty, metricsList, centers, creatures, boss) {
+      // Enhanced visual effects
+      this.energyAura += dt * 8;
+      this.netheriteEffect += dt * 3;
+      this.lintherTimer += dt * 4;
+      this.blueFlameTimer += dt * 6;
+      this.pokeballFlowerTimer += dt * 2;
+      
+      // Call parent update (skip the transformation check)
+      // Copy Gary's update logic without transformation
+      this.scannerDucky.scanTimer += dt;
+      if (this.scannerDucky.scanTimer >= this.scannerDucky.scanInterval) {
+        this.scannerDucky.scan(creatures, boss, centers);
+        this.scannerDucky.scanTimer = 0;
+      }
+      
+      // Hunt for food (any creature or player)
+      if (!this.huntTarget || this.huntTarget.health <= 0 || this.huntTarget.destroyed) {
+        let nearestPrey = null;
+        let nearestDist = Infinity;
+        
+        creatures.forEach(c => {
+          if (c !== this.ridingXyz && c.health > 0) {
+            const dist = Math.hypot(c.x - this.x, c.y - this.y);
+            if (dist < nearestDist) {
+              nearestDist = dist;
+              nearestPrey = c;
+            }
+          }
+        });
+        
+        centers.forEach((cen, i) => {
+          if (!eatenByGary[i]) {
+            const dist = Math.hypot(cen[0] - this.x, cen[1] - this.y);
+            if (dist < nearestDist) {
+              nearestDist = dist;
+              nearestPrey = { x: cen[0], y: cen[1], type: 'player', index: i };
+            }
+          }
+        });
+        
+        this.huntTarget = nearestPrey;
+      }
+      
+      // Enhanced movement logic
+      let targetX = tx;
+      let targetY = ty;
+      
+      if (this.huntTarget) {
+        targetX = this.huntTarget.x;
+        targetY = this.huntTarget.y;
+      }
+      
+      if (this.ridingShip) {
+        const shipSpeed = 400; // Faster than normal Gary
+        const dx = targetX - this.x;
+        const dy = targetY - this.y;
+        const dist = Math.hypot(dx, dy) || 1e-6;
+        this.x += (dx/dist) * shipSpeed * dt;
+        this.y += (dy/dist) * shipSpeed * dt;
+      } else if (this.ridingXyz && this.ridingXyz.health > 0) {
+        this.x = this.ridingXyz.x;
+        this.y = this.ridingXyz.y - 50;
+      } else {
+        const dx = targetX - this.x;
+        const dy = targetY - this.y;
+        const dist = Math.hypot(dx, dy) || 1e-6;
+        this.x += (dx/dist) * this.huntSpeed * dt;
+        this.y += (dy/dist) * this.huntSpeed * dt;
+      }
+      
+      // Enhanced eating with no permanent capture
+      this.eatTimer += dt;
+      if (this.eatTimer >= this.eatInterval) {
+        creatures.forEach((c, i) => {
+          if (c !== this.ridingXyz && Math.hypot(c.x - this.x, c.y - this.y) < this.radius + this.eatRadius) {
+            if (!(c instanceof XYZ)) {
+              creatures.splice(i, 1);
+              this.totalEaten++;
+              this.radius = Math.min(200, this.baseRadius + (this.totalEaten * this.growthRate));
+              this.speak("MEGA EATING!");
+              this.huntTarget = null;
+            }
+          }
+        });
+        
+        centers.forEach((cen, i) => {
+          if (!eatenByGary[i] && Math.hypot(cen[0] - this.x, cen[1] - this.y) < this.radius + this.eatRadius) {
+            playerLives[i] = (playerLives[i] || 3) - 3; // Heavy damage
+            invulTimers[i] = 1.5;
+            
+            if (playerLives[i] <= 0) {
+              playerLives[i] = 3; // Always respawn
+              invulTimers[i] = 2.0;
+            }
+            
+            this.totalEaten++;
+            this.radius = Math.min(200, this.baseRadius + (this.totalEaten * this.growthRate));
+            this.speak("MEGA EATING!");
+            this.huntTarget = null;
+          }
+        });
+        
+        this.eatTimer = 0;
+      }
+      
+      // Vortex power - pulls and teleports
+      this.vortexTimer += dt;
+      if (this.vortexTimer >= this.vortexInterval) {
+        this.createVortex(creatures, centers);
+        this.vortexTimer = 0;
+      }
+      
+      // Rock of All Power effects
+      if (this.hasRockOfAllPower && this.rockOfAllPower) {
+        this.rockPowerLevel += dt * 0.5;
+        
+        // Gary can't handle all the power - instability
+        this.instability += dt * 0.2;
+        if (this.instability >= 1.0) {
+          this.overcharging = true;
+          
+          // Random power surges
+          if (Math.random() < 0.1) {
+            this.createPowerSurge();
+          }
+        }
+        
+        // Enhanced abilities from rock
+        this.powerLevel = 1000 * this.rockPowerLevel;
+        this.vortexPower = 500 * this.rockPowerLevel;
+        this.radius = Math.min(200, 90 + (this.rockPowerLevel * 10));
+      }
+      
+      // End dimension teleportation
+      this.endDimensionTimer += dt;
+      if (this.endDimensionTimer >= this.endDimensionInterval && this.canTeleportToEnd) {
+        this.teleportToEndDimension();
+        this.endDimensionTimer = 0;
+      }
+      
+      // Transform water to Linther poison
+      this.transformWaterToLinther();
+      
+      // Transform attachments
+      this.enhanceAttachments();
+    }
+    
+    createVortex(creatures, centers) {
+      this.vortexActive = true;
+      
+      // Pull creatures toward Mega Gary
+      creatures.forEach(c => {
+        if (c !== this.ridingXyz) {
+          const dx = this.x - c.x;
+          const dy = this.y - c.y;
+          const dist = Math.hypot(dx, dy);
+          
+          if (dist < this.vortexRadius && dist > 0) {
+            const pullStrength = this.vortexPower / (dist + 1);
+            c.x += (dx / dist) * pullStrength * 0.016; // dt approximation
+            c.y += (dy / dist) * pullStrength * 0.016;
+            
+            // Teleport if very close
+            if (dist < this.radius + 20) {
+              c.x = this.x + (Math.random() - 0.5) * 100;
+              c.y = this.y + (Math.random() - 0.5) * 100;
+            }
+          }
+        }
+      });
+      
+      // Pull players
+      centers.forEach((center, i) => {
+        if (!eatenByGary[i]) {
+          const dx = this.x - center[0];
+          const dy = this.y - center[1];
+          const dist = Math.hypot(dx, dy);
+          
+          if (dist < this.vortexRadius) {
+            // Players get pulled and can be teleported
+            const pullStrength = this.vortexPower / (dist + 1);
+            // Note: Can't directly modify player position, but effect is visual
+          }
+        }
+      });
+      
+      // Self teleportation
+      if (Math.random() < 0.3) {
+        this.x = Math.random() * (canvasElement.width - 200) + 100;
+        this.y = Math.random() * (canvasElement.height - 200) + 100;
+      }
+      
+      setTimeout(() => {
+        this.vortexActive = false;
+      }, 2000);
+    }
+    
+    createPowerSurge() {
+      // Create multiple energy blasts
+      for (let i = 0; i < 12; i++) {
+        const angle = (i / 12) * Math.PI * 2;
+        const vx = Math.cos(angle) * 600;
+        const vy = Math.sin(angle) * 600;
+        const surge = new PurpleLaser(this.x, this.y, vx, vy);
+        surge.color = '#FFD700';
+        surge.radius = 20;
+        surge.damage = 5;
+        lasers.push(surge);
+      }
+    }
+    
+    teleportToEndDimension() {
+      // Teleport to End of Dungeon dimension and attack
+      if (Math.random() < 0.4) {
+        // Change to End dimension
+        currentDimension = 'EndOfDungeon';
+        
+        // Spawn in End dimension
+        this.x = canvasElement.width / 2;
+        this.y = canvasElement.height / 2;
+        
+        // Create chaos in End dimension
+        for (let i = 0; i < 5; i++) {
+          creatures.push(new Nightmare(this.x + (Math.random() - 0.5) * 200, 
+                                     this.y + (Math.random() - 0.5) * 200, 
+                                     canvasElement.width, canvasElement.height));
+        }
+        
+        this.speak("END DIMENSION INVASION!");
+      }
+    }
+    
+    transformWaterToLinther() {
+      // Transform any water effects to Linther poison
+      // This would affect visual water effects if they existed
+      // For now, create poison pools periodically
+      if (Math.random() < 0.05) {
+        const lintherX = this.x + (Math.random() - 0.5) * 300;
+        const lintherY = this.y + (Math.random() - 0.5) * 300;
+        
+        // Create Linther poison pool (visual effect)
+        ctx.save();
+        ctx.fillStyle = 'rgba(128, 0, 128, 0.3)';
+        ctx.beginPath();
+        ctx.arc(lintherX, lintherY, 30, 0, 2 * Math.PI);
+        ctx.fill();
+        ctx.restore();
+      }
+    }
+    
+    enhanceAttachments() {
+      // Transform attachments to enhanced versions
+      this.attachments.forEach(att => {
+        if (!att.enhanced) {
+          att.enhanced = true;
+          att.damage *= 2; // Double damage
+          att.length *= 1.5; // Bigger size
+          att.attackInterval *= 0.5; // Faster attacks
+          
+          // Visual enhancement
+          if (att.type === 'lightsaber') {
+            att.color = '#FFD700'; // Gold lightsaber
+          }
+        }
+      });
+    }
+    
+    render(ctx) {
+      ctx.save();
+      
+      // Energy aura effect
+      const auraRadius = this.radius + Math.sin(this.energyAura) * 30;
+      ctx.fillStyle = `rgba(255, 215, 0, ${0.2 + Math.sin(this.energyAura) * 0.1})`;
+      ctx.beginPath();
+      ctx.arc(this.x, this.y, auraRadius, 0, 2 * Math.PI);
+      ctx.fill();
+      
+      // Larger gown
+      ctx.fillStyle = this.color;
+      ctx.beginPath();
+      ctx.arc(this.x, this.y, this.radius * this.gownSize, 0, 2 * Math.PI);
+      ctx.fill();
+      
+      // Main body
+      ctx.fillStyle = this.color;
+      ctx.beginPath();
+      ctx.arc(this.x, this.y, this.radius, 0, 2 * Math.PI);
+      ctx.fill();
+      
+      // Red eyes
+      ctx.fillStyle = this.eyeColor;
+      ctx.beginPath();
+      ctx.arc(this.x - 15, this.y - 10, 8, 0, 2 * Math.PI);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.arc(this.x + 15, this.y - 10, 8, 0, 2 * Math.PI);
+      ctx.fill();
+      
+      // Hellbroken diamond (transformed to netherite)
+      ctx.save();
+      ctx.translate(this.x, this.y + 20);
+      ctx.rotate(this.netheriteEffect);
+      ctx.fillStyle = '#8B4513'; // Netherite color
+      ctx.fillRect(-12, -8, 24, 16);
+      ctx.fillStyle = '#FFD700'; // Gold accents
+      ctx.fillRect(-8, -4, 16, 8);
+      ctx.restore();
+      
+      // Blue flames effect
+      for (let i = 0; i < 8; i++) {
+        const flameAngle = (i / 8) * Math.PI * 2 + this.blueFlameTimer;
+        const flameX = this.x + Math.cos(flameAngle) * (this.radius + 20);
+        const flameY = this.y + Math.sin(flameAngle) * (this.radius + 20);
+        
+        ctx.fillStyle = '#0080FF'; // Blue flame
+        ctx.beginPath();
+        ctx.arc(flameX, flameY, 8, 0, 2 * Math.PI);
+        ctx.fill();
+      }
+      
+      // Vortex effect when active
+      if (this.vortexActive) {
+        ctx.strokeStyle = '#FFD700';
+        ctx.lineWidth = 5;
+        for (let r = 20; r < this.vortexRadius; r += 20) {
+          ctx.beginPath();
+          ctx.arc(this.x, this.y, r, 0, 2 * Math.PI);
+          ctx.stroke();
+        }
+      }
+      
+      // Power level indicator
+      ctx.fillStyle = '#FFFFFF';
+      ctx.font = 'bold 16px Arial';
+      ctx.textAlign = 'center';
+      ctx.fillText(`MEGA GARY - Power: ${Math.floor(this.powerLevel)}`, this.x, this.y - this.radius - 20);
+      
+      // Instability warning
+      if (this.overcharging) {
+        ctx.fillStyle = '#FF0000';
+        ctx.font = 'bold 14px Arial';
+        ctx.fillText('POWER OVERLOAD!', this.x, this.y - this.radius - 40);
+      }
+      
+      ctx.restore();
+      
+      // Render attachments with enhanced effects
+      this.attachments.forEach(att => {
+        const attachAngle = this.spinAngle + att.offsetAngle;
+        const attachX = this.x + Math.cos(attachAngle) * (this.radius + att.length/2);
+        const attachY = this.y + Math.sin(attachAngle) * (this.radius + att.length/2);
+        
+        ctx.save();
+        ctx.translate(attachX, attachY);
+        ctx.rotate(attachAngle);
+        
+        // Enhanced glow effect
+        if (att.enhanced) {
+          ctx.shadowColor = '#FFD700';
+          ctx.shadowBlur = 20;
+        }
+        
+        att.render(ctx);
+        ctx.restore();
+      });
+    }
+    
+    speak(context) {
+      // Enhanced mega voice
+      if (!this.audioPlaying) {
+        this.megaAudio.currentTime = 0;
+        this.megaAudio.play().catch(e => console.log('Mega audio play failed:', e));
+        this.audioPlaying = true;
+        this.megaAudio.onended = () => {
           this.audioPlaying = false;
         };
       }
@@ -2018,6 +2542,7 @@
   const lavaPools = [];
   const miniVortexes = [];
   const aiPlayers = [];
+  const rockOfPowerItems = [];
   let garyBoss = null;
   let lexicon = null;
   let theFrog = null;
@@ -2285,6 +2810,13 @@
           name
         );
         aiPlayers.push(ai);
+      }
+      
+      // Spawn The Rock of All Power very rarely
+      if (Math.random() < 0.001 && rockOfPowerItems.length < 1) {
+        const rockX = Math.random() * (canvasElement.width - 100) + 50;
+        const rockY = Math.random() * (canvasElement.height - 100) + 50;
+        rockOfPowerItems.push(new RockOfAllPower(rockX, rockY));
       }
     }
     // Precompute video/canvas scaling and centers for defeat logic
@@ -2635,6 +3167,31 @@
     
     // Update storms
     storms.forEach(s=>s.update(dt));
+    
+    // Update Rock of All Power items
+    rockOfPowerItems.forEach(rock => rock.update(dt));
+    
+    // Check if Gary can collect The Rock of All Power
+    if (garyBoss) {
+      const gary = garyBoss;
+      for (let i = rockOfPowerItems.length - 1; i >= 0; i--) {
+        const rock = rockOfPowerItems[i];
+        const dist = Math.hypot(gary.x - rock.x, gary.y - rock.y);
+        
+        if (dist < gary.radius + rock.radius) {
+          // Gary collects The Rock of All Power
+          gary.hasRockOfAllPower = true;
+          gary.rockOfAllPower = rock;
+          rockOfPowerItems.splice(i, 1);
+          gary.speak("THE ROCK OF ALL POWER IS MINE!");
+          
+          // If regular Gary has it, trigger transformation sooner
+          if (garyBoss && !gary.hasTransformed) {
+            gary.transformationTrigger = Math.min(gary.transformationTrigger, gary.totalEaten + 5);
+          }
+        }
+      }
+    }
     
     // Storm damage to players and creatures
     storms.forEach(storm => {
@@ -3178,6 +3735,11 @@
       });
       
       ctx.restore();
+    });
+    
+    // Draw Rock of All Power items
+    rockOfPowerItems.forEach(rock => {
+      rock.render(ctx);
     });
     
     // Draw Gary boss
