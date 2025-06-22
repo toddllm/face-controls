@@ -102,6 +102,33 @@
     }
   }
   
+  // Helper function to spawn a random minion at (x, y)
+  function spawnRandomMinion(x, y, sw, sh) {
+    const minionTypes = [Creature, Snowie, FireSpinner, Ghost, Skeleton, Caster, Dragon];
+    const Type = minionTypes[Math.floor(Math.random() * minionTypes.length)];
+    creatures.push(new Type(x, y, sw, sh));
+  }
+  
+  // Base boss class - must be defined before any boss extends it
+  class BaseBoss {
+    constructor(cx,cy){ this.x=cx; this.y=cy-150; this.radius=40; this.health=20; this.speed=60; this.color='purple'; this.angle=0;
+      this.minionTimer = 0;
+      this.minionInterval = 2.0; // seconds
+    }
+    update(dt,tx,ty){
+      this.angle+=dt;
+      this.x=tx+Math.cos(this.angle)*150;
+      this.y=ty+Math.sin(this.angle)*80;
+    }
+    spawnMinions(dt) {
+      this.minionTimer += dt;
+      if (this.minionTimer >= this.minionInterval) {
+        spawnRandomMinion(this.x, this.y, canvasElement.width, canvasElement.height);
+        this.minionTimer = 0;
+      }
+    }
+  }
+  
   // XYZ creature (honsil) that Gary rides
   class XYZ extends BaseBoss {
     constructor(cx, cy) {
@@ -485,24 +512,6 @@
         if (portalIndex > -1) {
           portals.splice(portalIndex, 1);
         }
-      }
-    }
-  }
-  class BaseBoss {
-    constructor(cx,cy){ this.x=cx; this.y=cy-150; this.radius=40; this.health=20; this.speed=60; this.color='purple'; this.angle=0;
-      this.minionTimer = 0;
-      this.minionInterval = 2.0; // seconds
-    }
-    update(dt,tx,ty){
-      this.angle+=dt;
-      this.x=tx+Math.cos(this.angle)*150;
-      this.y=ty+Math.sin(this.angle)*80;
-    }
-    spawnMinions(dt) {
-      this.minionTimer += dt;
-      if (this.minionTimer >= this.minionInterval) {
-        spawnRandomMinion(this.x, this.y, canvasElement.width, canvasElement.height);
-        this.minionTimer = 0;
       }
     }
   }
@@ -1580,11 +1589,4 @@
   });
   createPauseButton();
   createPauseOverlay();
-
-  // Helper function to spawn a random minion at (x, y)
-  function spawnRandomMinion(x, y, sw, sh) {
-    const minionTypes = [Creature, Snowie, FireSpinner, Ghost, Skeleton, Caster, Dragon];
-    const Type = minionTypes[Math.floor(Math.random() * minionTypes.length)];
-    creatures.push(new Type(x, y, sw, sh));
-  }
 })();
