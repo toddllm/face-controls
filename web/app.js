@@ -72,6 +72,208 @@
     constructor(cx,cy,sw,sh){ super(cx,cy,sw,sh); this.radius=25; this.speed=120; this.color='magenta'; this.osc=0; }
     update(dt, tx, ty) { this.osc += dt*5; const off=Math.sin(this.osc)*50; super.update(dt, tx+off, ty); }
   }
+  
+  // New enemy types
+  class Phantom extends Creature {
+    constructor(cx,cy,sw,sh){ super(cx,cy,sw,sh); this.radius=18; this.speed=90; this.color='rgba(200,100,255,0.5)'; this.phase=0; }
+    update(dt, tx, ty) { this.phase += dt*3; this.color = `rgba(200,100,255,${0.3 + Math.sin(this.phase)*0.2})`; super.update(dt, tx, ty); }
+  }
+  class Bomber extends Creature {
+    constructor(cx,cy,sw,sh){ super(cx,cy,sw,sh); this.radius=20; this.speed=60; this.color='#8B4513'; this.bombTimer=0; }
+    update(dt, tx, ty) { 
+      super.update(dt, tx, ty); 
+      this.bombTimer += dt;
+      if(this.bombTimer >= 2 && Math.hypot(this.x-tx, this.y-ty) < 150) {
+        // Explode
+        for(let a=0; a<360; a+=45) {
+          const r=a*Math.PI/180;
+          lasers.push(new Fireball(this.x, this.y, Math.cos(r)*200, Math.sin(r)*200));
+        }
+        this.bombTimer = 0;
+      }
+    }
+  }
+  class Ninja extends Creature {
+    constructor(cx,cy,sw,sh){ super(cx,cy,sw,sh); this.radius=16; this.speed=150; this.color='#2F4F4F'; this.visible=true; this.vanishTimer=0; }
+    update(dt, tx, ty) { 
+      this.vanishTimer += dt;
+      if(this.vanishTimer >= 1.5) {
+        this.visible = !this.visible;
+        this.vanishTimer = 0;
+        if(!this.visible) {
+          // Teleport behind player
+          const angle = Math.atan2(ty-this.y, tx-this.x) + Math.PI;
+          this.x = tx + Math.cos(angle) * 100;
+          this.y = ty + Math.sin(angle) * 100;
+        }
+      }
+      if(this.visible) super.update(dt, tx, ty);
+    }
+  }
+  class Healer extends Creature {
+    constructor(cx,cy,sw,sh){ super(cx,cy,sw,sh); this.radius=15; this.speed=50; this.color='#98FB98'; this.healTimer=0; }
+    update(dt, tx, ty) { 
+      super.update(dt, tx, ty);
+      this.healTimer += dt;
+      if(this.healTimer >= 3) {
+        // Heal nearby creatures
+        creatures.forEach(c => {
+          if(c !== this && Math.hypot(c.x-this.x, c.y-this.y) < 100 && c.health && c.health < c.maxHealth) {
+            c.health = Math.min(c.health + 1, c.maxHealth || 3);
+          }
+        });
+        this.healTimer = 0;
+      }
+    }
+  }
+  class Mimic extends Creature {
+    constructor(cx,cy,sw,sh){ super(cx,cy,sw,sh); this.radius=20; this.speed=80; this.color='#DAA520'; this.mimicType=null; }
+    update(dt, tx, ty) {
+      // Copy abilities of nearest creature
+      if(!this.mimicType) {
+        let nearest = null;
+        let nearestDist = Infinity;
+        creatures.forEach(c => {
+          if(c !== this) {
+            const dist = Math.hypot(c.x-this.x, c.y-this.y);
+            if(dist < nearestDist) {
+              nearestDist = dist;
+              nearest = c;
+            }
+          }
+        });
+        if(nearest) {
+          this.mimicType = nearest.constructor.name;
+          this.color = nearest.color;
+          this.speed = nearest.speed;
+        }
+      }
+      super.update(dt, tx, ty);
+    }
+  }
+  
+  // End of Dungeon dimension enemies
+  class Loc extends Creature {
+    constructor(cx,cy,sw,sh){ super(cx,cy,sw,sh); this.radius=14; this.speed=70; this.color='#4B0082'; this.lockTimer=0; }
+    update(dt, tx, ty) {
+      super.update(dt, tx, ty);
+      this.lockTimer += dt;
+      if(this.lockTimer >= 2.5 && Math.hypot(this.x-tx, this.y-ty) < 100) {
+        // Lock player movement temporarily
+        playerLocked = true;
+        setTimeout(() => { playerLocked = false; }, 1000);
+        this.lockTimer = 0;
+      }
+    }
+  }
+  class Bat extends Creature {
+    constructor(cx,cy,sw,sh){ super(cx,cy,sw,sh); this.radius=12; this.speed=140; this.color='#8B008B'; this.swoopPhase=0; }
+    update(dt, tx, ty) {
+      this.swoopPhase += dt * 4;
+      const swoopOffset = Math.sin(this.swoopPhase) * 30;
+      super.update(dt, tx, ty + swoopOffset);
+    }
+  }
+  class Nightmare extends Creature {
+    constructor(cx,cy,sw,sh){ super(cx,cy,sw,sh); this.radius=22; this.speed=60; this.color='#000033'; this.fearAura=100; }
+    update(dt, tx, ty) {
+      super.update(dt, tx, ty);
+      // Reverse player controls when near
+      if(Math.hypot(this.x-tx, this.y-ty) < this.fearAura) {
+        controlsReversed = true;
+      }
+    }
+  }
+  class Dream extends Creature {
+    constructor(cx,cy,sw,sh){ super(cx,cy,sw,sh); this.radius=18; this.speed=40; this.color='#FFB6C1'; this.illusionTimer=0; }
+    update(dt, tx, ty) {
+      super.update(dt, tx, ty);
+      this.illusionTimer += dt;
+      if(this.illusionTimer >= 4) {
+        // Create illusion copies
+        for(let i = 0; i < 3; i++) {
+          const angle = (i / 3) * Math.PI * 2;
+          const illusionX = this.x + Math.cos(angle) * 50;
+          const illusionY = this.y + Math.sin(angle) * 50;
+          creatures.push(new Illusion(illusionX, illusionY, canvasElement.width, canvasElement.height));
+        }
+        this.illusionTimer = 0;
+      }
+    }
+  }
+  class Illusion extends Creature {
+    constructor(cx,cy,sw,sh){ super(cx,cy,sw,sh); this.radius=15; this.speed=100; this.color='rgba(255,182,193,0.4)'; this.lifetime=3; }
+    update(dt, tx, ty) {
+      super.update(dt, tx, ty);
+      this.lifetime -= dt;
+      if(this.lifetime <= 0) this.health = 0;
+    }
+  }
+  class Whiched extends Creature {
+    constructor(cx,cy,sw,sh){ super(cx,cy,sw,sh); this.radius=19; this.speed=65; this.color='#8B7355'; this.curseTimer=0; }
+    update(dt, tx, ty) {
+      super.update(dt, tx, ty);
+      this.curseTimer += dt;
+      if(this.curseTimer >= 3 && Math.hypot(this.x-tx, this.y-ty) < 120) {
+        // Curse: slow player attacks
+        playerAttackSpeed = 0.5;
+        setTimeout(() => { playerAttackSpeed = 1; }, 2000);
+        this.curseTimer = 0;
+      }
+    }
+  }
+  class Creak extends Creature {
+    constructor(cx,cy,sw,sh){ super(cx,cy,sw,sh); this.radius=17; this.speed=45; this.color='#8B4513'; this.shakeIntensity=0; }
+    update(dt, tx, ty) {
+      super.update(dt, tx, ty);
+      // Screen shake when near
+      const dist = Math.hypot(this.x-tx, this.y-ty);
+      if(dist < 150) {
+        this.shakeIntensity = (150 - dist) / 15;
+        screenShake = this.shakeIntensity;
+      }
+    }
+  }
+  class Creeper extends Creature {
+    constructor(cx,cy,sw,sh){ super(cx,cy,sw,sh); this.radius=16; this.speed=30; this.color='#006400'; this.explodeRadius=80; }
+    update(dt, tx, ty) {
+      const dist = Math.hypot(this.x-tx, this.y-ty);
+      if(dist < 50) {
+        // Explode
+        this.color = '#00FF00';
+        this.explodeRadius += dt * 200;
+        if(this.explodeRadius > 150) {
+          // Damage everything nearby
+          creatures.forEach(c => {
+            if(Math.hypot(c.x-this.x, c.y-this.y) < 150) {
+              c.health = (c.health || 1) - 3;
+            }
+          });
+          this.health = 0;
+        }
+      } else {
+        super.update(dt, tx, ty);
+      }
+    }
+  }
+  class NeonZombie extends Creature {
+    constructor(cx,cy,sw,sh){ super(cx,cy,sw,sh); this.radius=18; this.speed=55; this.color='#00FF00'; this.glowPhase=0; }
+    update(dt, tx, ty) {
+      super.update(dt, tx, ty);
+      this.glowPhase += dt * 3;
+      this.color = `rgb(0, ${Math.floor(200 + Math.sin(this.glowPhase) * 55)}, 0)`;
+    }
+  }
+  class Lunanua extends Creature {
+    constructor(cx,cy,sw,sh){ super(cx,cy,sw,sh); this.radius=24; this.speed=75; this.color='#E6E6FA'; this.moonPhase=0; this.powerLevel=1; }
+    update(dt, tx, ty) {
+      this.moonPhase += dt * 0.5;
+      this.powerLevel = 1 + Math.sin(this.moonPhase) * 0.5;
+      this.speed = 75 * this.powerLevel;
+      this.radius = 24 * this.powerLevel;
+      super.update(dt, tx, ty);
+    }
+  }
   class Laser {
     constructor(x,y,vx,vy){ this.x=x; this.y=y; this.vx=vx; this.vy=vy; this.radius=5; this.color='red'; this.active=true; }
     update(dt){ this.x+=this.vx*dt; this.y+=this.vy*dt; if(this.x<0||this.x>canvasElement.width||this.y<0||this.y>canvasElement.height) this.active=false; }
@@ -1099,6 +1301,324 @@
     }
   }
   
+  // A.S.D. - Apocalyptic Sentient Destroyer (End of Dungeon Final Boss)
+  class ASD extends BaseBoss {
+    constructor(cx, cy) {
+      super(cx, cy);
+      this.name = 'A.S.D.';
+      this.fullName = 'Apocalyptic Sentient Destroyer';
+      this.radius = 80;
+      this.health = 500;
+      this.maxHealth = 500;
+      this.color = '#000000';
+      this.phase = 1;
+      this.attackPattern = 0;
+      this.patternTimer = 0;
+      this.patternInterval = 5.0;
+      
+      // Phase 1 abilities
+      this.voidBeamTimer = 0;
+      this.voidBeamInterval = 3.0;
+      
+      // Phase 2 abilities
+      this.dimensionShiftTimer = 0;
+      this.dimensionShiftInterval = 8.0;
+      
+      // Phase 3 abilities
+      this.apocalypseTimer = 0;
+      this.apocalypseInterval = 10.0;
+      this.singularityActive = false;
+    }
+    
+    update(dt, tx, ty) {
+      super.update(dt, tx, ty);
+      
+      // Update phase based on health
+      const healthPercent = this.health / this.maxHealth;
+      if (healthPercent <= 0.33) {
+        this.phase = 3;
+        this.color = '#FF0000';
+      } else if (healthPercent <= 0.66) {
+        this.phase = 2;
+        this.color = '#800080';
+      }
+      
+      // Pattern rotation
+      this.patternTimer += dt;
+      if (this.patternTimer >= this.patternInterval) {
+        this.attackPattern = (this.attackPattern + 1) % 3;
+        this.patternTimer = 0;
+      }
+      
+      // Phase 1: Void beams
+      if (this.phase >= 1) {
+        this.voidBeamTimer += dt;
+        if (this.voidBeamTimer >= this.voidBeamInterval) {
+          // Rotating void beams
+          for(let i = 0; i < 8; i++) {
+            const angle = (i / 8) * Math.PI * 2 + this.angle;
+            const beam = new PurpleLaser(this.x, this.y, Math.cos(angle) * 500, Math.sin(angle) * 500);
+            beam.color = '#4B0082';
+            beam.radius = 15;
+            beam.damage = 2;
+            lasers.push(beam);
+          }
+          this.voidBeamTimer = 0;
+        }
+      }
+      
+      // Phase 2: Dimension shift
+      if (this.phase >= 2) {
+        this.dimensionShiftTimer += dt;
+        if (this.dimensionShiftTimer >= this.dimensionShiftInterval) {
+          // Teleport and summon nightmares
+          this.x = Math.random() * (canvasElement.width - 200) + 100;
+          this.y = Math.random() * (canvasElement.height - 200) + 100;
+          
+          for(let i = 0; i < 3; i++) {
+            creatures.push(new Nightmare(this.x, this.y, canvasElement.width, canvasElement.height));
+          }
+          this.dimensionShiftTimer = 0;
+        }
+      }
+      
+      // Phase 3: Apocalypse
+      if (this.phase >= 3) {
+        this.apocalypseTimer += dt;
+        if (this.apocalypseTimer >= this.apocalypseInterval) {
+          // Create singularity
+          this.singularityActive = true;
+          
+          // Pull everything toward center
+          const centerX = canvasElement.width / 2;
+          const centerY = canvasElement.height / 2;
+          
+          creatures.forEach(c => {
+            if (c !== this) {
+              const dx = centerX - c.x;
+              const dy = centerY - c.y;
+              const dist = Math.hypot(dx, dy) || 1;
+              c.x += (dx/dist) * 200 * dt;
+              c.y += (dy/dist) * 200 * dt;
+            }
+          });
+          
+          // Apocalyptic damage waves
+          if (Math.floor(this.apocalypseTimer * 2) % 2 === 0) {
+            fireRings.push({
+              x: centerX,
+              y: centerY,
+              radius: 50,
+              maxRadius: 500,
+              expandSpeed: 300,
+              color: '#8B0000'
+            });
+          }
+          
+          if (this.apocalypseTimer >= this.apocalypseInterval + 5) {
+            this.singularityActive = false;
+            this.apocalypseTimer = 0;
+          }
+        }
+      }
+      
+      // Spawn dungeon creatures based on pattern
+      switch(this.attackPattern) {
+        case 0:
+          if (Math.random() < 0.02) creatures.push(new Loc(this.x, this.y, canvasElement.width, canvasElement.height));
+          break;
+        case 1:
+          if (Math.random() < 0.02) creatures.push(new Whiched(this.x, this.y, canvasElement.width, canvasElement.height));
+          break;
+        case 2:
+          if (Math.random() < 0.02) creatures.push(new Lunanua(this.x, this.y, canvasElement.width, canvasElement.height));
+          break;
+      }
+    }
+  }
+  
+  // AI Player class
+  class AIPlayer {
+    constructor(x, y, name) {
+      this.x = x;
+      this.y = y;
+      this.name = name;
+      this.radius = 50;
+      this.lives = 3;
+      this.targetCreature = null;
+      this.movementTimer = 0;
+      this.shootTimer = 0;
+      this.shootInterval = 0.5;
+      this.dodgeTimer = 0;
+      this.dodgeInterval = 2.0;
+      this.strategy = ['aggressive', 'defensive', 'support'][Math.floor(Math.random() * 3)];
+      this.color = ['#FFD700', '#C0C0C0', '#CD7F32'][Math.floor(Math.random() * 3)];
+    }
+    
+    update(dt) {
+      // Find target
+      if (!this.targetCreature || this.targetCreature.health <= 0) {
+        let nearest = null;
+        let nearestDist = Infinity;
+        creatures.forEach(c => {
+          const dist = Math.hypot(c.x - this.x, c.y - this.y);
+          if (dist < nearestDist && !(c instanceof GaryBoss)) {
+            nearestDist = dist;
+            nearest = c;
+          }
+        });
+        this.targetCreature = nearest;
+      }
+      
+      // Movement based on strategy
+      if (this.targetCreature) {
+        const dx = this.targetCreature.x - this.x;
+        const dy = this.targetCreature.y - this.y;
+        const dist = Math.hypot(dx, dy) || 1;
+        
+        switch(this.strategy) {
+          case 'aggressive':
+            // Move toward target
+            this.x += (dx/dist) * 150 * dt;
+            this.y += (dy/dist) * 150 * dt;
+            break;
+          case 'defensive':
+            // Keep distance
+            if (dist < 200) {
+              this.x -= (dx/dist) * 100 * dt;
+              this.y -= (dy/dist) * 100 * dt;
+            } else if (dist > 300) {
+              this.x += (dx/dist) * 50 * dt;
+              this.y += (dy/dist) * 50 * dt;
+            }
+            break;
+          case 'support':
+            // Stay near other AI players
+            let centerX = 0, centerY = 0, count = 0;
+            aiPlayers.forEach(ai => {
+              if (ai !== this) {
+                centerX += ai.x;
+                centerY += ai.y;
+                count++;
+              }
+            });
+            if (count > 0) {
+              centerX /= count;
+              centerY /= count;
+              const cdx = centerX - this.x;
+              const cdy = centerY - this.y;
+              const cdist = Math.hypot(cdx, cdy) || 1;
+              if (cdist > 150) {
+                this.x += (cdx/cdist) * 100 * dt;
+                this.y += (cdy/cdist) * 100 * dt;
+              }
+            }
+            break;
+        }
+      }
+      
+      // Shooting
+      this.shootTimer += dt;
+      if (this.shootTimer >= this.shootInterval && this.targetCreature) {
+        const dx = this.targetCreature.x - this.x;
+        const dy = this.targetCreature.y - this.y;
+        const dist = Math.hypot(dx, dy) || 1;
+        lasers.push(new Laser(this.x, this.y, (dx/dist) * 600, (dy/dist) * 600));
+        this.shootTimer = 0;
+      }
+      
+      // Dodging
+      this.dodgeTimer += dt;
+      if (this.dodgeTimer >= this.dodgeInterval) {
+        // Check for nearby threats
+        let nearestThreat = null;
+        let threatDist = Infinity;
+        lasers.forEach(l => {
+          const dist = Math.hypot(l.x - this.x, l.y - this.y);
+          if (dist < 100 && dist < threatDist) {
+            threatDist = dist;
+            nearestThreat = l;
+          }
+        });
+        
+        if (nearestThreat) {
+          // Dodge perpendicular to threat
+          const dx = nearestThreat.vx;
+          const dy = nearestThreat.vy;
+          const perpX = -dy;
+          const perpY = dx;
+          const mag = Math.hypot(perpX, perpY) || 1;
+          this.x += (perpX/mag) * 200;
+          this.y += (perpY/mag) * 200;
+        }
+        
+        this.dodgeTimer = 0;
+      }
+      
+      // Keep in bounds
+      this.x = Math.max(this.radius, Math.min(canvasElement.width - this.radius, this.x));
+      this.y = Math.max(this.radius, Math.min(canvasElement.height - this.radius, this.y));
+    }
+  }
+  
+  // Dimension Portal base class
+  class DimensionPortal {
+    constructor(x, y, targetDimension) {
+      this.x = x;
+      this.y = y;
+      this.radius = 40;
+      this.targetDimension = targetDimension;
+      this.active = true;
+      this.pulse = 0;
+      this.color = targetDimension === 'dungeon' ? '#8B0000' : '#8B008B';
+    }
+    
+    update(dt) {
+      this.pulse += dt * 2;
+      
+      // Check if player enters portal
+      metricsList.forEach((m, i) => {
+        const centers = [canvasElement.width - (m.faceCoords[0]*(canvasElement.width/(videoElement.videoWidth||640))), m.faceCoords[1]*(canvasElement.height/(videoElement.videoHeight||480))];
+        if (Math.hypot(centers[0] - this.x, centers[1] - this.y) < this.radius + 50) {
+          // Transport to new dimension
+          currentDimension = this.targetDimension;
+          if (this.targetDimension === 'dungeon') {
+            dungeonDimensionActive = true;
+            // Spawn dungeon creatures
+            for(let i = 0; i < 5; i++) {
+              const types = [Loc, Bat, Nightmare, Dream, Whiched, Creak, Creeper, NeonZombie, Lunanua];
+              const Type = types[Math.floor(Math.random() * types.length)];
+              creatures.push(new Type(0, 0, canvasElement.width, canvasElement.height));
+            }
+            // Spawn The Frog
+            if (!theFrog) {
+              theFrog = new TheFrog(canvasElement.width/2, canvasElement.height/2);
+            }
+          } else if (this.targetDimension === 'elder') {
+            elderDimensionActive = true;
+            // Original Elder portal spawning code
+            const isShadow = Math.random() < 0.01;
+            garyBoss = new GaryBoss(this.x, this.y, isShadow);
+            const xyz = new XYZ(this.x, this.y + 100);
+            xyz.health = 100;
+            garyBoss.ridingXyz = xyz;
+            creatures.push(xyz);
+            garyBoss.heldItem = ['remote', 'crystal', 'scanner'][Math.floor(Math.random() * 3)];
+            
+            // Spawn Lexicon
+            if (!lexicon) {
+              lexicon = new Lexicon(this.x + 200, this.y);
+            }
+          }
+          
+          // Remove this portal
+          const idx = portals.indexOf(this);
+          if (idx > -1) portals.splice(idx, 1);
+        }
+      });
+    }
+  }
+  
   // Elder Dimension Portal
   class ElderPortal {
     constructor(x, y) {
@@ -1147,15 +1667,313 @@
       }
     }
   }
-  // Boss subclasses
-  class SnowKing extends BaseBoss { constructor(cx,cy){ super(cx,cy); this.health=30; this.color='lightblue'; this.spawn=3; this.timer=0; }
-    update(dt,tx,ty){ super.update(dt,tx,ty); this.spawnMinions(dt); this.timer+=dt; if(this.timer>=this.spawn){ creatures.push(new Snowie(this.x,this.y,canvasElement.width,canvasElement.height)); this.timer=0;} }
+  // Lexicon - Gary's creator
+  class Lexicon {
+    constructor(x, y) {
+      this.x = x;
+      this.y = y;
+      this.radius = 35;
+      this.health = 200;
+      this.maxHealth = 200;
+      this.color = '#4169E1';
+      this.bookFloat = 0;
+      this.spellTimer = 0;
+      this.spellInterval = 2.0;
+      this.creationTimer = 0;
+      this.creationInterval = 15.0;
+      this.knowledge = ['fire', 'ice', 'lightning', 'void', 'time'];
+      this.currentSpell = 0;
+      this.isCreator = true;
+    }
+    update(dt) {
+      this.bookFloat += dt * 2;
+      
+      // Spell casting
+      this.spellTimer += dt;
+      if (this.spellTimer >= this.spellInterval) {
+        const spell = this.knowledge[this.currentSpell];
+        switch(spell) {
+          case 'fire':
+            for(let i = 0; i < 5; i++) {
+              const angle = (i / 5) * Math.PI * 2;
+              lasers.push(new Fireball(this.x, this.y, Math.cos(angle) * 300, Math.sin(angle) * 300));
+            }
+            break;
+          case 'ice':
+            // Freeze nearby enemies
+            creatures.forEach(c => {
+              if(Math.hypot(c.x - this.x, c.y - this.y) < 200) {
+                c.speed *= 0.5;
+                setTimeout(() => { c.speed *= 2; }, 2000);
+              }
+            });
+            break;
+          case 'lightning':
+            // Chain lightning
+            let target = creatures[Math.floor(Math.random() * creatures.length)];
+            if(target) {
+              const bolt = new PurpleLaser(this.x, this.y, (target.x - this.x) * 2, (target.y - this.y) * 2);
+              bolt.color = '#FFFF00';
+              lasers.push(bolt);
+            }
+            break;
+          case 'void':
+            // Create void zones
+            voidZones.push({ x: this.x + (Math.random() - 0.5) * 300, y: this.y + (Math.random() - 0.5) * 300, radius: 50, lifetime: 5 });
+            break;
+          case 'time':
+            // Slow time for everyone except Lexicon
+            timeSlowActive = true;
+            setTimeout(() => { timeSlowActive = false; }, 3000);
+            break;
+        }
+        this.currentSpell = (this.currentSpell + 1) % this.knowledge.length;
+        this.spellTimer = 0;
+      }
+      
+      // Create minions
+      this.creationTimer += dt;
+      if (this.creationTimer >= this.creationInterval) {
+        // Create a shadow Gary
+        const shadowGary = new GaryBoss(this.x + 100, this.y, true);
+        shadowGary.health = 50; // Weaker version
+        shadowGary.radius = 30;
+        creatures.push(shadowGary);
+        this.creationTimer = 0;
+      }
+    }
   }
-  class FlameWarden extends BaseBoss { constructor(cx,cy){ super(cx,cy); this.health=25; this.color='orange'; this.spawn=2; this.timer=0; }
-    update(dt,tx,ty){ super.update(dt,tx,ty); this.spawnMinions(dt); this.timer+=dt; if(this.timer>=this.spawn){ creatures.push(new FireSpinner(this.x,this.y,canvasElement.width,canvasElement.height)); this.timer=0;} }
+  
+  // The Frog - trap master
+  class TheFrog {
+    constructor(x, y) {
+      this.x = x;
+      this.y = y;
+      this.radius = 25;
+      this.health = 100;
+      this.maxHealth = 100;
+      this.color = '#228B22';
+      this.jumpTimer = 0;
+      this.jumpInterval = 1.5;
+      this.trapTimer = 0;
+      this.trapInterval = 3.0;
+      this.tongueTimer = 0;
+      this.tongueInterval = 2.0;
+      this.jumping = false;
+      this.jumpVx = 0;
+      this.jumpVy = 0;
+      this.jumpDuration = 0.5;
+      this.jumpTime = 0;
+    }
+    update(dt, playerX, playerY) {
+      // Jumping
+      this.jumpTimer += dt;
+      if (this.jumpTimer >= this.jumpInterval && !this.jumping) {
+        this.jumping = true;
+        this.jumpTime = 0;
+        const angle = Math.atan2(playerY - this.y, playerX - this.x) + (Math.random() - 0.5) * Math.PI/2;
+        this.jumpVx = Math.cos(angle) * 400;
+        this.jumpVy = Math.sin(angle) * 400;
+        this.jumpTimer = 0;
+      }
+      
+      if (this.jumping) {
+        this.jumpTime += dt;
+        this.x += this.jumpVx * dt;
+        this.y += this.jumpVy * dt;
+        if (this.jumpTime >= this.jumpDuration) {
+          this.jumping = false;
+        }
+      }
+      
+      // Lay traps
+      this.trapTimer += dt;
+      if (this.trapTimer >= this.trapInterval) {
+        traps.push({
+          x: this.x + (Math.random() - 0.5) * 100,
+          y: this.y + (Math.random() - 0.5) * 100,
+          type: ['spike', 'sticky', 'poison'][Math.floor(Math.random() * 3)],
+          radius: 30,
+          active: true
+        });
+        this.trapTimer = 0;
+      }
+      
+      // Tongue attack
+      this.tongueTimer += dt;
+      if (this.tongueTimer >= this.tongueInterval) {
+        const dist = Math.hypot(playerX - this.x, playerY - this.y);
+        if (dist < 200) {
+          // Tongue grab
+          tongueAttacks.push({
+            startX: this.x,
+            startY: this.y,
+            endX: playerX,
+            endY: playerY,
+            lifetime: 0.5,
+            age: 0
+          });
+        }
+        this.tongueTimer = 0;
+      }
+    }
   }
-  class VortexBoss extends BaseBoss { constructor(cx,cy){ super(cx,cy); this.health=35; this.color='blue'; this.pulse=3; this.timer=0; this.pull=100; this.radiusPull=200; }
-    update(dt,tx,ty){ super.update(dt,tx,ty); this.spawnMinions(dt); this.timer+=dt; if(this.timer>=this.pulse){ creatures.forEach(c=>{ const dx=this.x-c.x, dy=this.y-c.y, d=Math.hypot(dx,dy)||1; if(d<this.radiusPull){ c.x+=dx/d*this.pull*dt; c.y+=dy/d*this.pull*dt;} }); this.timer=0;} }
+  
+  // Boss subclasses with enhanced powers
+  class SnowKing extends BaseBoss { 
+    constructor(cx,cy){ 
+      super(cx,cy); 
+      this.health=30; 
+      this.color='lightblue'; 
+      this.spawn=3; 
+      this.timer=0;
+      this.blizzardTimer = 0;
+      this.blizzardInterval = 5.0;
+      this.iceWallTimer = 0;
+      this.iceWallInterval = 7.0;
+    }
+    update(dt,tx,ty){ 
+      super.update(dt,tx,ty); 
+      this.spawnMinions(dt); 
+      this.timer+=dt; 
+      if(this.timer>=this.spawn){ 
+        creatures.push(new Snowie(this.x,this.y,canvasElement.width,canvasElement.height)); 
+        this.timer=0;
+      }
+      
+      // Blizzard attack
+      this.blizzardTimer += dt;
+      if (this.blizzardTimer >= this.blizzardInterval) {
+        // Create blizzard effect
+        for(let i = 0; i < 20; i++) {
+          const angle = Math.random() * Math.PI * 2;
+          const speed = 200 + Math.random() * 200;
+          const ice = new PurpleLaser(this.x, this.y, Math.cos(angle) * speed, Math.sin(angle) * speed);
+          ice.color = '#B0E0E6';
+          lasers.push(ice);
+        }
+        this.blizzardTimer = 0;
+      }
+      
+      // Ice wall
+      this.iceWallTimer += dt;
+      if (this.iceWallTimer >= this.iceWallInterval) {
+        // Create ice walls
+        for(let i = 0; i < 5; i++) {
+          iceWalls.push({
+            x: this.x + (i - 2) * 50,
+            y: this.y + 100,
+            width: 40,
+            height: 80,
+            health: 3
+          });
+        }
+        this.iceWallTimer = 0;
+      }
+    }
+  }
+  class FlameWarden extends BaseBoss { 
+    constructor(cx,cy){ 
+      super(cx,cy); 
+      this.health=25; 
+      this.color='orange'; 
+      this.spawn=2; 
+      this.timer=0;
+      this.fireRingTimer = 0;
+      this.fireRingInterval = 4.0;
+      this.lavaPoolTimer = 0;
+      this.lavaPoolInterval = 6.0;
+    }
+    update(dt,tx,ty){ 
+      super.update(dt,tx,ty); 
+      this.spawnMinions(dt); 
+      this.timer+=dt; 
+      if(this.timer>=this.spawn){ 
+        creatures.push(new FireSpinner(this.x,this.y,canvasElement.width,canvasElement.height)); 
+        this.timer=0;
+      }
+      
+      // Fire ring
+      this.fireRingTimer += dt;
+      if (this.fireRingTimer >= this.fireRingInterval) {
+        // Expanding fire ring
+        fireRings.push({
+          x: this.x,
+          y: this.y,
+          radius: 20,
+          maxRadius: 300,
+          expandSpeed: 150
+        });
+        this.fireRingTimer = 0;
+      }
+      
+      // Lava pools
+      this.lavaPoolTimer += dt;
+      if (this.lavaPoolTimer >= this.lavaPoolInterval) {
+        lavaPools.push({
+          x: tx + (Math.random() - 0.5) * 200,
+          y: ty + (Math.random() - 0.5) * 200,
+          radius: 40,
+          lifetime: 10
+        });
+        this.lavaPoolTimer = 0;
+      }
+    }
+  }
+  class VortexBoss extends BaseBoss { 
+    constructor(cx,cy){ 
+      super(cx,cy); 
+      this.health=35; 
+      this.color='blue'; 
+      this.pulse=3; 
+      this.timer=0; 
+      this.pull=100; 
+      this.radiusPull=200;
+      this.miniVortexTimer = 0;
+      this.miniVortexInterval = 5.0;
+      this.reverseTimer = 0;
+      this.reverseInterval = 8.0;
+      this.reversePull = false;
+    }
+    update(dt,tx,ty){ 
+      super.update(dt,tx,ty); 
+      this.spawnMinions(dt); 
+      this.timer+=dt; 
+      if(this.timer>=this.pulse){ 
+        const pullForce = this.reversePull ? -this.pull : this.pull;
+        creatures.forEach(c=>{ 
+          const dx=this.x-c.x, dy=this.y-c.y, d=Math.hypot(dx,dy)||1; 
+          if(d<this.radiusPull){ 
+            c.x+=dx/d*pullForce*dt; 
+            c.y+=dy/d*pullForce*dt;
+          } 
+        }); 
+        this.timer=0;
+      }
+      
+      // Mini vortexes
+      this.miniVortexTimer += dt;
+      if (this.miniVortexTimer >= this.miniVortexInterval) {
+        for(let i = 0; i < 3; i++) {
+          miniVortexes.push({
+            x: this.x + (Math.random() - 0.5) * 400,
+            y: this.y + (Math.random() - 0.5) * 400,
+            radius: 100,
+            pull: 50,
+            lifetime: 5
+          });
+        }
+        this.miniVortexTimer = 0;
+      }
+      
+      // Reverse gravity
+      this.reverseTimer += dt;
+      if (this.reverseTimer >= this.reverseInterval) {
+        this.reversePull = !this.reversePull;
+        this.color = this.reversePull ? '#FF1493' : 'blue';
+        this.reverseTimer = 0;
+      }
+    }
   }
   class SpinnerBoss extends BaseBoss { constructor(cx,cy){ super(cx,cy); this.health=30; this.color='yellow'; this.spin=6; this.interval=2.5; this.timer=0; }
     update(dt,tx,ty){ this.angle+=this.spin*dt; this.x=tx; this.y=ty-150; this.spawnMinions(dt); this.timer+=dt; if(this.timer>=this.interval){ for(let a=0;a<360;a+=45){ const r=a*Math.PI/180; lasers.push(new PurpleLaser(this.x,this.y,Math.cos(r)*300,Math.sin(r)*300)); } this.timer=0;} }
@@ -1192,15 +2010,33 @@
   const gusterBlocks = [];
   const pumus = [];
   const storms = [];
+  const traps = [];
+  const tongueAttacks = [];
+  const voidZones = [];
+  const iceWalls = [];
+  const fireRings = [];
+  const lavaPools = [];
+  const miniVortexes = [];
+  const aiPlayers = [];
   let garyBoss = null;
+  let lexicon = null;
+  let theFrog = null;
+  let asdBoss = null;
   let elderDimensionActive = false;
+  let dungeonDimensionActive = false;
+  let currentDimension = 'normal'; // normal, dungeon, elder
+  let playerLocked = false;
+  let controlsReversed = false;
+  let playerAttackSpeed = 1;
+  let screenShake = 0;
+  let timeSlowActive = false;
   let boss = null;
   let waveIndex = 0;
   let waveKills = 0;
   let state = 'minions';
   let lastSpawn = 0;
   const spawnInterval = 1.5;
-  const killTargets = [20,30,40,50,60,70,80,90,100,120];
+  const killTargets = [15,20,25,30,35,40,45,50,55,60]; // Adjusted for more dimensions
   let playerLives = [];
   let invulTimers = [];
   let eatenByGary = []; // Track which players were eaten
@@ -1423,12 +2259,33 @@
     
     getMicData();
     const nowSec = performance.now()/1000;
-    if(state === 'minions' && nowSec - lastSpawn > spawnInterval && !elderDimensionActive) {
+    if(state === 'minions' && nowSec - lastSpawn > spawnInterval && !elderDimensionActive && !dungeonDimensionActive) {
       const r = Math.random();
-      const types = [Creature, Snowie, FireSpinner, Ghost, Skeleton, Caster, Dragon];
+      let types = [Creature, Snowie, FireSpinner, Ghost, Skeleton, Caster, Dragon];
+      
+      // Add more enemy types in later waves
+      if (waveIndex >= 3) {
+        types.push(Phantom, Bomber, Ninja);
+      }
+      if (waveIndex >= 5) {
+        types.push(Healer, Mimic);
+      }
+      
       const Type = types[Math.floor(r*types.length)];
       creatures.push(new Type(0,0, canvasElement.width, canvasElement.height));
       lastSpawn = nowSec;
+      
+      // Spawn AI players occasionally
+      if (Math.random() < 0.01 && aiPlayers.length < 3) {
+        const aiNames = ['AlphaBot', 'BetaDroid', 'GammaUnit', 'DeltaCore', 'EpsilonAI'];
+        const name = aiNames[Math.floor(Math.random() * aiNames.length)];
+        const ai = new AIPlayer(
+          Math.random() * canvasElement.width,
+          Math.random() * canvasElement.height,
+          name
+        );
+        aiPlayers.push(ai);
+      }
     }
     // Precompute video/canvas scaling and centers for defeat logic
     const vw = videoElement.videoWidth || 640;
@@ -1650,9 +2507,28 @@
     if(state==='minions' && waveKills>=killTargets[waveIndex]){
       const [bx,by]=centers[0]||[canvasElement.width/2,canvasElement.height/2];
       const bossesArr=[SnowKing,FlameWarden,VortexBoss,SpinnerBoss,RamBoss,TrackerBoss,ArticalBoss,ShadowBoss,AlienKingBoss,MadackedaBoss];
-      boss=new bossesArr[waveIndex](bx,by);
-      bossMaxHealth = boss.health;
-      state='boss_'+[ 'snow','fire','vortex','spinner','ram','tracker','artical','shadow','alienking','madackeda' ][waveIndex];
+      
+      // Check if we should transition to a new dimension
+      if (waveIndex === 4 && currentDimension === 'normal' && !dungeonDimensionActive) {
+        // After 5 bosses, open portal to Dungeon dimension
+        portals.push(new DimensionPortal(canvasElement.width/2, canvasElement.height/2, 'dungeon'));
+        state = 'portal_wait';
+      } else if (waveIndex === 9 && currentDimension === 'normal' && !elderDimensionActive) {
+        // After all normal bosses, open portal to Elder dimension
+        portals.push(new DimensionPortal(canvasElement.width/2, canvasElement.height/2, 'elder'));
+        state = 'portal_wait';
+      } else if (dungeonDimensionActive && !asdBoss) {
+        // In dungeon dimension, spawn A.S.D. as final boss
+        asdBoss = new ASD(bx, by);
+        boss = asdBoss;
+        bossMaxHealth = boss.health;
+        state = 'boss_asd';
+      } else if (waveIndex < bossesArr.length) {
+        // Normal boss progression
+        boss=new bossesArr[waveIndex](bx,by);
+        bossMaxHealth = boss.health;
+        state='boss_'+[ 'snow','fire','vortex','spinner','ram','tracker','artical','shadow','alienking','madackeda' ][waveIndex];
+      }
       waveKills=0;creatures.length=0;lasers.length=0;
     }
     // Voice-activated laser (from both eyes, using head movement direction)
@@ -1795,6 +2671,164 @@
         storms.splice(i, 1);
       }
     }
+    
+    // Update AI players
+    aiPlayers.forEach(ai => ai.update(dt));
+    
+    // Update The Frog
+    if (theFrog) {
+      const playerPos = centers[0] || [canvasElement.width/2, canvasElement.height/2];
+      theFrog.update(dt, playerPos[0], playerPos[1]);
+    }
+    
+    // Update Lexicon
+    if (lexicon) {
+      lexicon.update(dt);
+    }
+    
+    // Update traps
+    traps.forEach(trap => {
+      if (trap.active) {
+        centers.forEach((cen, i) => {
+          if (Math.hypot(cen[0] - trap.x, cen[1] - trap.y) < trap.radius) {
+            switch(trap.type) {
+              case 'spike':
+                if (invulTimers[i] <= 0) {
+                  playerLives[i] = (playerLives[i] || 3) - 1;
+                  invulTimers[i] = 1.0;
+                  trap.active = false;
+                }
+                break;
+              case 'sticky':
+                // Slow player movement
+                playerSpeed = 0.3;
+                setTimeout(() => { playerSpeed = 1; }, 2000);
+                trap.active = false;
+                break;
+              case 'poison':
+                // Damage over time
+                poisonTimer = 3.0;
+                trap.active = false;
+                break;
+            }
+          }
+        });
+      }
+    });
+    
+    // Update tongue attacks
+    for (let i = tongueAttacks.length - 1; i >= 0; i--) {
+      const t = tongueAttacks[i];
+      t.age += dt;
+      if (t.age < t.lifetime) {
+        // Pull player toward frog
+        centers.forEach((cen, j) => {
+          const progress = t.age / t.lifetime;
+          const pullX = t.startX + (cen[0] - t.startX) * (1 - progress);
+          const pullY = t.startY + (cen[1] - t.startY) * (1 - progress);
+          // This would need actual player position manipulation
+        });
+      } else {
+        tongueAttacks.splice(i, 1);
+      }
+    }
+    
+    // Update void zones
+    for (let i = voidZones.length - 1; i >= 0; i--) {
+      const zone = voidZones[i];
+      zone.lifetime -= dt;
+      if (zone.lifetime > 0) {
+        // Damage things in void
+        centers.forEach((cen, j) => {
+          if (Math.hypot(cen[0] - zone.x, cen[1] - zone.y) < zone.radius) {
+            if (invulTimers[j] <= 0) {
+              playerLives[j] = (playerLives[j] || 3) - 0.5;
+              invulTimers[j] = 0.5;
+            }
+          }
+        });
+      } else {
+        voidZones.splice(i, 1);
+      }
+    }
+    
+    // Update ice walls
+    for (let i = iceWalls.length - 1; i >= 0; i--) {
+      if (iceWalls[i].health <= 0) {
+        iceWalls.splice(i, 1);
+      }
+    }
+    
+    // Update fire rings
+    for (let i = fireRings.length - 1; i >= 0; i--) {
+      const ring = fireRings[i];
+      ring.radius += ring.expandSpeed * dt;
+      if (ring.radius >= ring.maxRadius) {
+        fireRings.splice(i, 1);
+      } else {
+        // Damage at ring edge
+        centers.forEach((cen, j) => {
+          const dist = Math.hypot(cen[0] - ring.x, cen[1] - ring.y);
+          if (Math.abs(dist - ring.radius) < 20 && invulTimers[j] <= 0) {
+            playerLives[j] = (playerLives[j] || 3) - 1;
+            invulTimers[j] = 1.0;
+          }
+        });
+      }
+    }
+    
+    // Update lava pools
+    for (let i = lavaPools.length - 1; i >= 0; i--) {
+      const pool = lavaPools[i];
+      pool.lifetime -= dt;
+      if (pool.lifetime > 0) {
+        centers.forEach((cen, j) => {
+          if (Math.hypot(cen[0] - pool.x, cen[1] - pool.y) < pool.radius && invulTimers[j] <= 0) {
+            playerLives[j] = (playerLives[j] || 3) - 0.5;
+            invulTimers[j] = 0.5;
+          }
+        });
+      } else {
+        lavaPools.splice(i, 1);
+      }
+    }
+    
+    // Update mini vortexes
+    for (let i = miniVortexes.length - 1; i >= 0; i--) {
+      const vortex = miniVortexes[i];
+      vortex.lifetime -= dt;
+      if (vortex.lifetime > 0) {
+        // Pull creatures
+        creatures.forEach(c => {
+          const dx = vortex.x - c.x;
+          const dy = vortex.y - c.y;
+          const dist = Math.hypot(dx, dy) || 1;
+          if (dist < vortex.radius) {
+            c.x += (dx/dist) * vortex.pull * dt;
+            c.y += (dy/dist) * vortex.pull * dt;
+          }
+        });
+      } else {
+        miniVortexes.splice(i, 1);
+      }
+    }
+    
+    // Apply time slow
+    const timeMultiplier = timeSlowActive ? 0.3 : 1.0;
+    
+    // Reset control reversals
+    controlsReversed = false;
+    
+    // Check nightmares for control reversal
+    creatures.forEach(c => {
+      if (c instanceof Nightmare) {
+        centers.forEach((cen, i) => {
+          if (Math.hypot(c.x - cen[0], c.y - cen[1]) < c.fearAura) {
+            controlsReversed = true;
+          }
+        });
+      }
+    });
     
     ctx.clearRect(0,0,canvasElement.width,canvasElement.height);
     // Draw level and monster counter to the right of the video overlay
