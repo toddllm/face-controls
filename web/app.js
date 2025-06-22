@@ -164,11 +164,12 @@
     constructor(cx, cy) {
       super(cx, cy);
       this.radius = 60;
-      this.health = 100;
+      this.health = 150; // More health
+      this.maxHealth = 150;
       this.color = '#663399';
-      this.snakeInterval = 2.0;
+      this.snakeInterval = 1.5; // Faster snake attacks
       this.snakeTimer = 0;
-      this.dashInterval = 5.0;
+      this.dashInterval = 3.0; // More frequent dashes
       this.dashTimer = 0;
       this.dashing = false;
       this.dashDuration = 0.8;
@@ -177,6 +178,27 @@
       this.dashVy = 0;
       this.villageTarget = null;
       this.villageAttackTimer = 0;
+      
+      // New abilities
+      this.fireBreathTimer = 0;
+      this.fireBreathInterval = 4.0;
+      this.fireBreathActive = false;
+      this.fireBreathDuration = 2.0;
+      this.fireBreathTime = 0;
+      
+      this.teleportTimer = 0;
+      this.teleportInterval = 8.0;
+      
+      this.minionSummonTimer = 0;
+      this.minionSummonInterval = 10.0;
+      
+      this.shieldActive = false;
+      this.shieldTimer = 0;
+      this.shieldInterval = 15.0;
+      this.shieldDuration = 5.0;
+      
+      this.rageMode = false;
+      this.phase = 1; // Boss phases based on health
     }
     update(dt, tx, ty) {
       // Target villages if they exist
@@ -251,6 +273,93 @@
         this.snakeTimer = 0;
       }
       
+      // Update phase based on health
+      const healthPercent = this.health / this.maxHealth;
+      if (healthPercent <= 0.3) {
+        this.phase = 3; // Final phase - all abilities faster
+        this.rageMode = true;
+        this.color = '#FF0066'; // Red-purple rage color
+      } else if (healthPercent <= 0.6) {
+        this.phase = 2;
+        this.color = '#9933FF'; // Brighter purple
+      }
+      
+      // Fire breath attack
+      this.fireBreathTimer += dt;
+      if (this.fireBreathTimer >= this.fireBreathInterval / this.phase && !this.fireBreathActive) {
+        this.fireBreathActive = true;
+        this.fireBreathTime = 0;
+        this.fireBreathTimer = 0;
+      }
+      
+      if (this.fireBreathActive) {
+        this.fireBreathTime += dt;
+        // Shoot fire in cone shape
+        if (this.centers && Math.floor(this.fireBreathTime * 10) % 2 === 0) {
+          const angleRange = 45; // degrees
+          for (let angle = -angleRange; angle <= angleRange; angle += 15) {
+            const rad = (angle + Math.atan2(targetY - this.y, targetX - this.x) * 180/Math.PI) * Math.PI/180;
+            const vx = Math.cos(rad) * 400;
+            const vy = Math.sin(rad) * 400;
+            const fire = new Fireball(this.x, this.y, vx, vy);
+            fire.color = '#FF4500';
+            lasers.push(fire);
+          }
+        }
+        
+        if (this.fireBreathTime >= this.fireBreathDuration) {
+          this.fireBreathActive = false;
+        }
+      }
+      
+      // Teleport ability
+      this.teleportTimer += dt;
+      if (this.teleportTimer >= this.teleportInterval / this.phase) {
+        // Teleport behind a random player
+        if (this.centers && this.centers.length > 0) {
+          const targetPlayer = this.centers[Math.floor(Math.random() * this.centers.length)];
+          this.x = targetPlayer[0] + (Math.random() - 0.5) * 200;
+          this.y = targetPlayer[1] + (Math.random() - 0.5) * 200;
+          // Immediately dash after teleport
+          this.dashing = true;
+          this.dashTime = 0;
+          const dx = targetPlayer[0] - this.x;
+          const dy = targetPlayer[1] - this.y;
+          const dist = Math.hypot(dx, dy) || 1e-6;
+          this.dashVx = dx/dist * 600;
+          this.dashVy = dy/dist * 600;
+        }
+        this.teleportTimer = 0;
+      }
+      
+      // Minion summoning
+      this.minionSummonTimer += dt;
+      if (this.minionSummonTimer >= this.minionSummonInterval / this.phase) {
+        // Summon dragon minions
+        for (let i = 0; i < 2 + this.phase; i++) {
+          const angle = (i / (2 + this.phase)) * Math.PI * 2;
+          const spawnX = this.x + Math.cos(angle) * 100;
+          const spawnY = this.y + Math.sin(angle) * 100;
+          creatures.push(new Dragon(spawnX, spawnY, canvasElement.width, canvasElement.height));
+        }
+        this.minionSummonTimer = 0;
+      }
+      
+      // Shield ability
+      this.shieldTimer += dt;
+      if (this.shieldTimer >= this.shieldInterval && !this.shieldActive) {
+        this.shieldActive = true;
+        this.shieldTimer = 0;
+      }
+      
+      if (this.shieldActive) {
+        this.shieldTimer += dt;
+        if (this.shieldTimer >= this.shieldDuration) {
+          this.shieldActive = false;
+          this.shieldTimer = 0;
+        }
+      }
+      
       // Melee attacks on players when close
       if ((!this.villageTarget || this.villageTarget.destroyed) && this.centers) {
         // Attack players in melee range
@@ -259,8 +368,9 @@
           if (!this.eatenByGary[i] && this.invulTimers[i] <= 0) {
             const dist = Math.hypot(this.x - cen[0], this.y - cen[1]);
             if (dist < meleeRange) {
-              // Dragon bite attack
-              this.playerLives[i] = (this.playerLives[i] || 3) - 1;
+              // Dragon bite attack - more damage in rage mode
+              const damage = this.rageMode ? 2 : 1;
+              this.playerLives[i] = (this.playerLives[i] || 3) - damage;
               this.invulTimers[i] = 2.0;
               if (this.playerLives[i] <= 0) {
                 this.playerLives[i] = 3;
@@ -1089,6 +1199,11 @@
     lasers.forEach(l => {
       creatures.forEach(c => {
         if(!defeatMap.has(c) && l.active && Math.hypot(c.x - l.x, c.y - l.y) < c.radius + l.radius) {
+          // Check if XYZ has shield active
+          if (c instanceof XYZ && c.shieldActive) {
+            l.active = false; // Shield blocks damage
+            return;
+          }
           l.active = false;
           defeatMap.set(c, 'laser');
         }
@@ -1376,7 +1491,14 @@
       if (xyzDragon) {
         ctx.font = 'bold 16px Arial';
         ctx.fillStyle = '#9370DB';
-        ctx.fillText(`Dragon Health: ${xyzDragon.health}/100`, overlayLeft, 190);
+        ctx.fillText(`Dragon Health: ${xyzDragon.health}/${xyzDragon.maxHealth}`, overlayLeft, 190);
+        
+        // Show dragon phase
+        if (xyzDragon.phase > 1) {
+          ctx.font = 'bold 14px Arial';
+          ctx.fillStyle = xyzDragon.phase === 3 ? '#FF0066' : '#FFD700';
+          ctx.fillText(`Phase ${xyzDragon.phase} - ${xyzDragon.rageMode ? 'ENRAGED!' : 'Enhanced'}`, overlayLeft, 210);
+        }
       } else {
         // Dragon defeated - VICTORY!
         ctx.save();
@@ -1422,7 +1544,72 @@
       ctx.stroke();
       ctx.restore();
     });
-    creatures.forEach(c=>{ctx.fillStyle=c.color;ctx.beginPath();ctx.arc(c.x,c.y,c.radius,0,2*Math.PI);ctx.fill();});
+    creatures.forEach(c=>{
+      // Special rendering for XYZ
+      if (c instanceof XYZ) {
+        // Draw shield if active
+        if (c.shieldActive) {
+          ctx.save();
+          ctx.strokeStyle = '#00FFFF';
+          ctx.lineWidth = 4;
+          ctx.globalAlpha = 0.5 + Math.sin(Date.now() * 0.005) * 0.2;
+          ctx.beginPath();
+          ctx.arc(c.x, c.y, c.radius + 20, 0, 2*Math.PI);
+          ctx.stroke();
+          ctx.restore();
+        }
+        
+        // Draw fire breath indicator
+        if (c.fireBreathActive) {
+          ctx.save();
+          ctx.fillStyle = '#FF4500';
+          ctx.globalAlpha = 0.3;
+          ctx.beginPath();
+          ctx.arc(c.x, c.y - 20, 30, 0, 2*Math.PI);
+          ctx.fill();
+          ctx.restore();
+        }
+        
+        // Draw dragon body
+        ctx.fillStyle=c.color;
+        ctx.beginPath();
+        ctx.arc(c.x,c.y,c.radius,0,2*Math.PI);
+        ctx.fill();
+        
+        // Draw spikes
+        ctx.save();
+        ctx.strokeStyle = c.rageMode ? '#FF0066' : '#4B0082';
+        ctx.lineWidth = 3;
+        for (let angle = 0; angle < 360; angle += 45) {
+          const rad = angle * Math.PI / 180;
+          const spikeX = c.x + Math.cos(rad) * c.radius;
+          const spikeY = c.y + Math.sin(rad) * c.radius;
+          const endX = c.x + Math.cos(rad) * (c.radius + 15);
+          const endY = c.y + Math.sin(rad) * (c.radius + 15);
+          ctx.beginPath();
+          ctx.moveTo(spikeX, spikeY);
+          ctx.lineTo(endX, endY);
+          ctx.stroke();
+        }
+        ctx.restore();
+        
+        // Phase indicator
+        if (c.phase > 1) {
+          ctx.save();
+          ctx.font = 'bold 12px Arial';
+          ctx.fillStyle = c.phase === 3 ? '#FF0066' : '#FFD700';
+          ctx.textAlign = 'center';
+          ctx.fillText(`Phase ${c.phase}`, c.x, c.y - c.radius - 10);
+          ctx.restore();
+        }
+      } else {
+        // Normal creature rendering
+        ctx.fillStyle=c.color;
+        ctx.beginPath();
+        ctx.arc(c.x,c.y,c.radius,0,2*Math.PI);
+        ctx.fill();
+      }
+    });
     lasers.forEach(l=>{ctx.fillStyle=l.color||'red';ctx.beginPath();ctx.arc(l.x,l.y,l.radius,0,2*Math.PI);ctx.fill();});
     fireballs.forEach(f=>{ctx.fillStyle='orange';ctx.beginPath();ctx.arc(f.x,f.y,f.radius,0,2*Math.PI);ctx.fill();});
     
