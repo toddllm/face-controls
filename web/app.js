@@ -575,7 +575,7 @@
             creatures.splice(i, 1);
             this.totalEaten++;
             this.radius = this.baseRadius + (this.totalEaten * this.growthRate);
-            this.speak("");
+            this.speak("eating"); // Says "not a threat" while eating
             this.huntTarget = null; // Find new target
           }
         }
@@ -588,7 +588,7 @@
             playerLives[i] = 0;
             this.totalEaten++;
             this.radius = this.baseRadius + (this.totalEaten * this.growthRate);
-            this.speak("");
+            this.speak("eating"); // Says "not a threat" while eating players
             this.huntTarget = null; // Find new target
           }
         });
@@ -621,7 +621,7 @@
       this.voiceTimer += dt;
       const voiceInterval = this.huntTarget ? 4.0 : this.voiceInterval;
       if (this.voiceTimer >= voiceInterval) {
-        this.speak(""); // Just play the audio
+        this.speak("hunting"); // Says "not a threat" while actively hunting
         this.voiceTimer = 0;
       }
       
@@ -702,8 +702,9 @@
       }
     }
     
-    speak(text) {
-      // Play audio instead of showing text
+    speak(context) {
+      // Play "not a threat" audio in ironic contexts
+      // Gary says this sarcastically while being the biggest threat
       if (!this.audioPlaying) {
         this.audio.currentTime = 0;
         this.audio.play().catch(e => console.log('Audio play failed:', e));
@@ -1156,7 +1157,7 @@
         if (l.active && Math.hypot(garyBoss.x - l.x, garyBoss.y - l.y) < garyBoss.radius + l.radius) {
           // Lasers pass through Gary without damage
           l.active = false;
-          garyBoss.speak(""); // Gary laughs at the attempt
+          garyBoss.speak("immortal"); // Says "not a threat" when hit by lasers
         }
       });
     }
@@ -1710,6 +1711,13 @@
         ctx.font = 'bold 14px Arial';
         ctx.fillStyle = '#FFD700';
         ctx.fillText(`Eaten: ${garyBoss.totalEaten}`, garyBoss.x, garyBoss.y - garyBoss.radius - 55);
+      }
+      
+      // Show ironic "not a threat" when audio is playing
+      if (garyBoss.audioPlaying) {
+        ctx.font = 'italic 16px Arial';
+        ctx.fillStyle = '#FF69B4';
+        ctx.fillText('"Not a threat"', garyBoss.x, garyBoss.y + garyBoss.radius + 30);
       }
       ctx.restore();
     }
