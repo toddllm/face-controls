@@ -111,6 +111,64 @@
       this.radius = 12;
       this.color = '#8B008B';
       this.stopRespawn = true;
+      this.damage = 0.5; // Minimal damage
+    }
+  }
+  
+  // Attachment classes for Gary
+  class GaryAttachment {
+    constructor(type, offsetAngle) {
+      this.type = type;
+      this.offsetAngle = offsetAngle;
+      this.attackTimer = 0;
+      this.attackInterval = 2.0;
+      
+      // Set properties based on type
+      switch(type) {
+        case 'lightsaber':
+          this.color = '#FF0000';
+          this.length = 60;
+          this.width = 4;
+          this.damage = 1;
+          break;
+        case 'robotArm':
+          this.color = '#C0C0C0';
+          this.length = 50;
+          this.width = 15;
+          this.damage = 2;
+          break;
+        case 'tank':
+          this.color = '#556B2F';
+          this.length = 40;
+          this.width = 30;
+          this.damage = 3;
+          break;
+        case 'cannon':
+          this.color = '#696969';
+          this.length = 45;
+          this.width = 20;
+          this.damage = 2;
+          break;
+        case 'shield':
+          this.color = '#4169E1';
+          this.length = 35;
+          this.width = 35;
+          this.damage = 0;
+          this.blocking = true;
+          break;
+        case 'wings':
+          this.color = '#DDA0DD';
+          this.length = 70;
+          this.width = 25;
+          this.damage = 1;
+          break;
+        case 'laser':
+          this.color = '#00FF00';
+          this.length = 55;
+          this.width = 8;
+          this.damage = 1.5;
+          break;
+      }
     }
   }
   
@@ -626,6 +684,15 @@
       this.layBlockInterval = 2.0; // Lay blocks every 2 seconds
       this.stormCreationTimer = 0;
       this.stormCreationInterval = 1.0;
+      
+      // Spinning and attachments
+      this.spinning = false;
+      this.spinSpeed = 0;
+      this.spinAngle = 0;
+      this.attachments = []; // Array of attached parts
+      this.attachmentTimer = 0;
+      this.attachmentInterval = 10.0; // Get new part every 10 seconds
+      this.availableParts = ['lightsaber', 'robotArm', 'tank', 'cannon', 'shield', 'wings', 'laser'];
     }
     checkEyeContact(metricsList, centers) {
       this.beingLookedAt = false;
@@ -938,6 +1005,84 @@
           this.speak("I found a spaceship! Time to fly!");
         }
       }
+      
+      // Spinning ability
+      if (this.spinning) {
+        this.spinAngle += this.spinSpeed * dt;
+        this.spinSpeed = Math.max(0, this.spinSpeed - dt * 100); // Slow down
+        if (this.spinSpeed <= 0) {
+          this.spinning = false;
+        }
+        
+        // Spin attack damage
+        if (this.spinSpeed > 200) {
+          creatures.forEach(c => {
+            if (!(c instanceof XYZ) && Math.hypot(c.x - this.x, c.y - this.y) < this.radius + 50) {
+              c.health = (c.health || 1) - 2;
+            }
+          });
+        }
+      } else if (Math.random() < 0.01) {
+        // Start spinning randomly
+        this.spinning = true;
+        this.spinSpeed = 500 + Math.random() * 500;
+        this.speak("spin"); // Says "not a threat" while spinning dangerously
+      }
+      
+      // Attachment system
+      this.attachmentTimer += dt;
+      if (this.attachmentTimer >= this.attachmentInterval && this.attachments.length < 8) {
+        // Add a new random attachment
+        const newPart = this.availableParts[Math.floor(Math.random() * this.availableParts.length)];
+        const angle = Math.random() * Math.PI * 2;
+        this.attachments.push(new GaryAttachment(newPart, angle));
+        this.attachmentTimer = 0;
+        this.speak(`New ${newPart}!`); // Says "not a threat" while adding weapons
+      }
+      
+      // Update attachments
+      this.attachments.forEach(att => {
+        att.attackTimer += dt;
+        
+        // Attachment attacks
+        if (att.attackTimer >= att.attackInterval && att.damage > 0) {
+          const attachAngle = this.spinAngle + att.offsetAngle;
+          const attachX = this.x + Math.cos(attachAngle) * (this.radius + att.length/2);
+          const attachY = this.y + Math.sin(attachAngle) * (this.radius + att.length/2);
+          
+          if (att.type === 'cannon' || att.type === 'laser') {
+            // Shoot projectiles
+            const targetAngle = attachAngle;
+            const vx = Math.cos(targetAngle) * 400;
+            const vy = Math.sin(targetAngle) * 400;
+            const projectile = new PurpleLaser(attachX, attachY, vx, vy);
+            projectile.color = att.type === 'cannon' ? '#FF4500' : '#00FF00';
+            projectile.damage = att.damage;
+            lasers.push(projectile);
+          } else {
+            // Melee damage
+            creatures.forEach(c => {
+              if (!(c instanceof XYZ) && Math.hypot(c.x - attachX, c.y - attachY) < att.length) {
+                c.health = (c.health || 1) - att.damage;
+              }
+            });
+            
+            // Also damage players
+            centers.forEach((cen, i) => {
+              if (!eatenByGary[i] && invulTimers[i] <= 0 && Math.hypot(cen[0] - attachX, cen[1] - attachY) < att.length) {
+                playerLives[i] = (playerLives[i] || 3) - att.damage;
+                invulTimers[i] = 1.0;
+                if (playerLives[i] <= 0) {
+                  playerLives[i] = 3;
+                  invulTimers[i] = 2.0;
+                }
+              }
+            });
+          }
+          
+          att.attackTimer = 0;
+        }
+      });
     }
     
     speak(context) {
@@ -1371,7 +1516,20 @@
             return;
           }
           l.active = false;
-          defeatMap.set(c, 'laser');
+          // Check if this is a Fang attack with minimal damage
+          if (l instanceof Fang && l.damage) {
+            // Give creature health if it doesn't have any
+            if (!c.health) {
+              c.health = 3; // Default health for creatures
+              c.maxHealth = 3;
+            }
+            c.health -= l.damage;
+            if (c.health <= 0) {
+              defeatMap.set(c, 'laser');
+            }
+          } else {
+            defeatMap.set(c, 'laser');
+          }
         }
       });
       // Boss collision detection
@@ -2160,6 +2318,95 @@
           ctx.beginPath();
           ctx.arc(itemX, itemY, 10, 0, 2*Math.PI);
           ctx.fill();
+        }
+        ctx.restore();
+      }
+      
+      // Draw attachments
+      garyBoss.attachments.forEach(att => {
+        ctx.save();
+        const attachAngle = garyBoss.spinAngle + att.offsetAngle;
+        const attachX = garyBoss.x + Math.cos(attachAngle) * garyBoss.radius;
+        const attachY = garyBoss.y + Math.sin(attachAngle) * garyBoss.radius;
+        
+        ctx.translate(attachX, attachY);
+        ctx.rotate(attachAngle);
+        
+        // Draw attachment based on type
+        ctx.fillStyle = att.color;
+        ctx.strokeStyle = att.color;
+        ctx.lineWidth = att.width;
+        
+        if (att.type === 'lightsaber') {
+          // Glowing blade
+          ctx.shadowColor = att.color;
+          ctx.shadowBlur = 15;
+          ctx.beginPath();
+          ctx.moveTo(0, 0);
+          ctx.lineTo(att.length, 0);
+          ctx.stroke();
+        } else if (att.type === 'robotArm') {
+          // Mechanical arm
+          ctx.fillRect(0, -att.width/2, att.length * 0.6, att.width);
+          ctx.fillRect(att.length * 0.6, -att.width/2 - 5, att.length * 0.4, att.width + 10);
+          // Claw
+          ctx.beginPath();
+          ctx.moveTo(att.length, -att.width/2);
+          ctx.lineTo(att.length + 10, 0);
+          ctx.lineTo(att.length, att.width/2);
+          ctx.stroke();
+        } else if (att.type === 'tank') {
+          // Tank body
+          ctx.fillRect(0, -att.width/2, att.length, att.width);
+          // Cannon
+          ctx.fillRect(att.length * 0.7, -5, att.length * 0.3, 10);
+        } else if (att.type === 'cannon') {
+          // Cannon barrel
+          ctx.fillRect(0, -att.width/2, att.length, att.width);
+          ctx.fillRect(att.length - 5, -att.width/2 - 5, 10, att.width + 10);
+        } else if (att.type === 'shield') {
+          // Energy shield
+          ctx.globalAlpha = 0.6;
+          ctx.beginPath();
+          ctx.arc(att.length/2, 0, att.width/2, 0, 2*Math.PI);
+          ctx.fill();
+        } else if (att.type === 'wings') {
+          // Butterfly-like wings
+          ctx.beginPath();
+          ctx.ellipse(att.length/2, -att.width/2, att.length/2, att.width/2, 0, 0, Math.PI);
+          ctx.ellipse(att.length/2, att.width/2, att.length/2, att.width/2, 0, Math.PI, 2*Math.PI);
+          ctx.fill();
+        } else if (att.type === 'laser') {
+          // Laser emitter
+          ctx.fillRect(0, -att.width/2, att.length * 0.8, att.width);
+          ctx.beginPath();
+          ctx.arc(att.length * 0.8, 0, att.width, 0, 2*Math.PI);
+          ctx.fill();
+        }
+        
+        ctx.restore();
+      });
+      
+      // Spinning effect
+      if (garyBoss.spinning && garyBoss.spinSpeed > 100) {
+        ctx.save();
+        ctx.strokeStyle = '#FF69B4';
+        ctx.lineWidth = 3;
+        ctx.globalAlpha = garyBoss.spinSpeed / 1000;
+        ctx.beginPath();
+        ctx.arc(garyBoss.x, garyBoss.y, garyBoss.radius + 60, 0, 2*Math.PI);
+        ctx.stroke();
+        
+        // Motion blur lines
+        for (let i = 0; i < 8; i++) {
+          const angle = (i / 8) * Math.PI * 2 + garyBoss.spinAngle;
+          ctx.beginPath();
+          ctx.moveTo(garyBoss.x, garyBoss.y);
+          ctx.lineTo(
+            garyBoss.x + Math.cos(angle) * (garyBoss.radius + 50),
+            garyBoss.y + Math.sin(angle) * (garyBoss.radius + 50)
+          );
+          ctx.stroke();
         }
         ctx.restore();
       }
