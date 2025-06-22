@@ -1066,6 +1066,9 @@
             if (playerLives[i] <= 0) {
               playerLives[i] = 3; // Respawn with full lives
               invulTimers[i] = 2.0;
+              
+              // Spawn AI assistance when Gary kills a player
+              spawnAIAssistance(cen[0], cen[1], 'gary_kill');
             }
             
             this.totalEaten++;
@@ -1538,6 +1541,9 @@
             if (playerLives[i] <= 0) {
               playerLives[i] = 3; // Always respawn
               invulTimers[i] = 2.0;
+              
+              // Spawn AI assistance when Mega Gary kills a player
+              spawnAIAssistance(cen[0], cen[1], 'mega_gary_kill');
             }
             
             this.totalEaten++;
@@ -2544,6 +2550,35 @@
   const aiPlayers = [];
   const rockOfPowerItems = [];
   let garyBoss = null;
+  
+  // Function to spawn AI assistance when Gary kills players
+  function spawnAIAssistance(deathX, deathY, reason) {
+    if (aiPlayers.length < 5) { // Allow up to 5 AI helpers
+      const aiNames = ['RescueBot', 'GuardianAI', 'DefenderUnit', 'ProtectorDroid', 'SaviorBot', 'HeroAI', 'ShieldUnit'];
+      const name = aiNames[Math.floor(Math.random() * aiNames.length)];
+      const ai = new AIPlayer(
+        deathX + (Math.random() - 0.5) * 200, // Spawn near death location
+        deathY + (Math.random() - 0.5) * 200,
+        name
+      );
+      // Make assistance AI more aggressive against Gary
+      ai.strategy = 'aggressive';
+      ai.color = '#00FF00'; // Green for rescue AI
+      aiPlayers.push(ai);
+      
+      // Visual effect for AI assistance
+      const assistEffect = {
+        x: ai.x,
+        y: ai.y,
+        t: 0,
+        type: 'assistance'
+      };
+      // Add to effects if array exists
+      if (typeof handHitEffects !== 'undefined') {
+        handHitEffects.push(assistEffect);
+      }
+    }
+  }
   let lexicon = null;
   let theFrog = null;
   let asdBoss = null;
@@ -2660,9 +2695,121 @@
       alert('Unable to access camera. Please make sure you have given camera permission and try again.');
     }
   }
+  
+  // Starter message system with tips, tricks, jokes, and code stats
+  const starterMessages = [
+    {
+      text: "🎮 This game was crafted with 4498 lines of code (including these very messages you're reading right now)!",
+      type: "code_stats"
+    },
+    {
+      text: "💡 TIP: Look away from Gary to avoid her wrath! Eye contact makes her aggressive, but looking away keeps you safe.",
+      type: "tip"
+    },
+    {
+      text: "🔥 TIP: Use your hands to attack creatures! Open your hands near enemies to damage them.",
+      type: "tip"
+    },
+    {
+      text: "😮 TIP: Open your mouth near enemies to capture them! It's surprisingly effective.",
+      type: "tip"
+    },
+    {
+      text: "🗿 RARE SECRET: The Rock of All Power spawns randomly (0.1% chance). If Gary finds it, she transforms into MEGA GARY!",
+      type: "secret"
+    },
+    {
+      text: "🤖 AI players will come to your rescue when Gary defeats you. They're like digital guardian angels!",
+      type: "tip"
+    },
+    {
+      text: "🐲 The XYZ Dragon can be defeated, but Gary is immortal. She's already dead - what's deader than dead?",
+      type: "tip"
+    },
+    {
+      text: "⚡ JOKE: Why doesn't Gary ever get tired? Because she runs on pure chaos energy and questionable life choices!",
+      type: "joke"
+    },
+    {
+      text: "🌪️ Gary can create storms by collecting gunk from Pumus blocks. Nature's recycling program gone wrong!",
+      type: "lesson"
+    },
+    {
+      text: "🎯 PUN ALERT: Gary's favorite music genre? Heavy METAL, because she's literally wearing armor and attitude!",
+      type: "pun"
+    },
+    {
+      text: "🎮 LESSON: This game uses MediaPipe for face detection. Your face literally controls the action - smile, you're on camera!",
+      type: "lesson"
+    },
+    {
+      text: "⚔️ Gary collects attachments like lightsabers and robot arms. She's basically a magical Swiss Army knife!",
+      type: "tip"
+    },
+    {
+      text: "🎪 JOKE: What do you call Gary's dimension-hopping abilities? UBER, but for interdimensional chaos!",
+      type: "joke"
+    },
+    {
+      text: "📈 The game gets harder with waves - more enemy types unlock as you survive longer. Survival of the fittest!",
+      type: "lesson"
+    },
+    {
+      text: "🌀 MEGA GARY creates vortexes that pull everything in. It's like a cosmic vacuum cleaner with anger issues!",
+      type: "tip"
+    },
+    {
+      text: "🎨 PUN: Why is Gary pink? Because she's in the PINK of health... permanently! Death couldn't improve her complexion.",
+      type: "pun"
+    },
+    {
+      text: "🏰 Elder Dimension restricts spawns to only Gary and XYZ. It's their private VIP club of chaos!",
+      type: "lesson"
+    },
+    {
+      text: "🎵 Gary says 'not a threat' while being the biggest threat. It's like a tornado saying it's just a gentle breeze!",
+      type: "joke"
+    },
+    {
+      text: "🔧 The game runs at 60 FPS using requestAnimationFrame. Smooth like Gary's dance moves (if she danced)!",
+      type: "lesson"
+    },
+    {
+      text: "⭐ LEGEND: Lexicon created Gary, The Frog sets traps, and A.S.D. guards the End Dimension. What a family reunion!",
+      type: "lesson"
+    }
+  ];
+  
+  let currentMessageIndex = 0;
+  let messageInterval;
+  
+  function displayStarterMessage() {
+    const messageText = document.getElementById('messageText');
+    const messageCounter = document.getElementById('messageCounter');
+    
+    if (messageText && messageCounter) {
+      const message = starterMessages[currentMessageIndex];
+      messageText.textContent = message.text;
+      messageCounter.textContent = `Message ${currentMessageIndex + 1} of ${starterMessages.length}`;
+      
+      currentMessageIndex = (currentMessageIndex + 1) % starterMessages.length;
+    }
+  }
+  
+  // Start showing messages when page loads
+  document.addEventListener('DOMContentLoaded', () => {
+    displayStarterMessage();
+    messageInterval = setInterval(displayStarterMessage, 4000); // Change every 4 seconds
+  });
+  
   // Wait for user gesture to start media
   const startBtn = document.getElementById('startButton');
   startBtn.addEventListener('click', () => {
+    // Stop the message rotation
+    if (messageInterval) {
+      clearInterval(messageInterval);
+    }
+    
     document.getElementById('startScreen').style.display = 'none';
     
     // Show Elder Portal button
@@ -2800,17 +2947,7 @@
       creatures.push(new Type(0,0, canvasElement.width, canvasElement.height));
       lastSpawn = nowSec;
       
-      // Spawn AI players occasionally
-      if (Math.random() < 0.01 && aiPlayers.length < 3) {
-        const aiNames = ['AlphaBot', 'BetaDroid', 'GammaUnit', 'DeltaCore', 'EpsilonAI'];
-        const name = aiNames[Math.floor(Math.random() * aiNames.length)];
-        const ai = new AIPlayer(
-          Math.random() * canvasElement.width,
-          Math.random() * canvasElement.height,
-          name
-        );
-        aiPlayers.push(ai);
-      }
+      // AI players no longer spawn randomly - only when Gary kills players
       
       // Spawn The Rock of All Power very rarely
       if (Math.random() < 0.001 && rockOfPowerItems.length < 1) {

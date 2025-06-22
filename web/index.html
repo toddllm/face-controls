@@ -159,6 +159,43 @@
         font-size: 16px;
       }
     }
+    
+    /* Starter message styling */
+    #messageContainer {
+      margin-bottom: 30px;
+      max-width: 600px;
+      text-align: center;
+    }
+    
+    #messageText {
+      background: rgba(0, 0, 0, 0.8);
+      color: #FFF;
+      padding: 20px;
+      border-radius: 10px;
+      font-size: 18px;
+      line-height: 1.4;
+      margin-bottom: 10px;
+      border: 2px solid #4CAF50;
+      box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+    }
+    
+    #messageCounter {
+      color: #CCC;
+      font-size: 14px;
+      font-style: italic;
+    }
+    
+    @media screen and (max-width: 480px) {
+      #messageContainer {
+        max-width: 90%;
+        margin-bottom: 20px;
+      }
+      
+      #messageText {
+        padding: 15px;
+        font-size: 16px;
+      }
+    }
   </style>
   <!-- MediaPipe FaceMesh & Hands -->
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js"></script>
@@ -174,6 +211,10 @@
   </div>
   <canvas id="gameCanvas"></canvas>
   <div id="startScreen">
+    <div id="messageContainer">
+      <div id="messageText"></div>
+      <div id="messageCounter"></div>
+    </div>
     <button id="startButton">Start Game</button>
   </div>
   <button id="elderPortalButton" style="display: none;">Build Portal to Elder</button>
