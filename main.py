@@ -11,8 +11,10 @@ import math
 creatures = []
 lasers = []
 fireballs = []
-# Global creatures list for boss abilities
-creatures = []
+snakes = []  # XYZ's snake attacks
+portals = []  # Elder dimension portals
+gary_boss = None  # Global Gary instance that ignores pause
+elder_dimension_active = False
 
 # --- Game entity classes and new main() with blink-triggered lasers and enemy waves ---
 class Creature:
@@ -225,9 +227,8 @@ class RamBoss(BaseBoss):
                 self.charging = True
                 self.charge_time = 0.0
                 self.charge_timer = 0.0
-                dcs = [(math.hypot(self.x - px, self.y - py), (px, py)) for px, py in centers]
-                _, tgt = min(dcs, key=lambda x: x[0])
-                dx = tgt[0]-self.x; dy = tgt[1]-self.y; dist=math.hypot(dx,dy) or 1e-6
+                # Charge at the current target position
+                dx = cx-self.x; dy = cy-self.y; dist=math.hypot(dx,dy) or 1e-6
                 self.vx = dx/dist*self.charge_speed; self.vy = dy/dist*self.charge_speed
         else:
             self.charge_time += dt
@@ -248,9 +249,8 @@ class TrackerBoss(BaseBoss):
         super().update(dt, cx, cy)
         self.track_timer += dt
         if self.track_timer >= self.track_interval:
-            dcs = [(math.hypot(self.x - px, self.y - py), (px, py)) for px, py in centers]
-            _, tgt = min(dcs, key=lambda x: x[0])
-            dx = tgt[0]-self.x; dy = tgt[1]-self.y; dist=math.hypot(dx,dy) or 1e-6
+            # Track current target
+            dx = cx-self.x; dy = cy-self.y; dist=math.hypot(dx,dy) or 1e-6
             vx = dx/dist*200; vy = dy/dist*200
             lasers.append(PurpleLaser(self.x, self.y, vx, vy))
             self.track_timer = 0.0
@@ -266,8 +266,11 @@ class ArticalBoss(BaseBoss):
         super().update(dt, cx, cy)
         self.teleport_timer += dt
         if self.teleport_timer >= self.teleport_interval:
-            idx = random.randrange(len(centers)) if centers else 0
-            self.x, self.y = centers[idx]
+            # Teleport to random position near target
+            angle = random.uniform(0, 2*math.pi)
+            dist = random.uniform(100, 200)
+            self.x = cx + math.cos(angle) * dist
+            self.y = cy + math.sin(angle) * dist
             self.teleport_timer = 0.0
 
 class ShadowBoss(BaseBoss):
@@ -308,6 +311,179 @@ class AlienKingBoss(BaseBoss):
                 lasers.append(PurpleLaser(self.x, self.y, math.cos(rad)*350, math.sin(rad)*350))
             self.ability_timer = 0.0
 
+# Snake projectile for XYZ
+class Snake(Laser):
+    def __init__(self, x, y, target_x, target_y):
+        dx = target_x - x
+        dy = target_y - y
+        dist = math.hypot(dx, dy) or 1e-6
+        super().__init__(x, y, dx/dist * 250, dy/dist * 250)
+        self.radius = 10
+        self.color = (50, 200, 50)
+        self.wiggle_angle = 0.0
+    def update(self, dt):
+        self.wiggle_angle += dt * 10
+        offset = math.sin(self.wiggle_angle) * 30
+        perp_x = -self.vy / math.hypot(self.vx, self.vy)
+        perp_y = self.vx / math.hypot(self.vx, self.vy)
+        self.x += self.vx * dt + perp_x * offset * dt
+        self.y += self.vy * dt + perp_y * offset * dt
+        if not (0 <= self.x <= 640 and 0 <= self.y <= 480):
+            self.active = False
+
+# XYZ creature (honsil) that Gary rides
+class XYZ(BaseBoss):
+    def __init__(self, cx, cy):
+        super().__init__(cx, cy)
+        self.radius = 60
+        self.health = 100
+        self.color = (100, 50, 150)
+        self.snake_interval = 2.0
+        self.snake_timer = 0.0
+        self.dash_interval = 5.0
+        self.dash_timer = 0.0
+        self.dashing = False
+        self.dash_duration = 0.8
+        self.dash_time = 0.0
+        self.dash_vx = 0
+        self.dash_vy = 0
+    def update(self, dt, cx, cy):
+        if not self.dashing:
+            super().update(dt, cx, cy)
+            self.dash_timer += dt
+            if self.dash_timer >= self.dash_interval:
+                self.dashing = True
+                self.dash_time = 0.0
+                self.dash_timer = 0.0
+                dx = cx - self.x
+                dy = cy - self.y
+                dist = math.hypot(dx, dy) or 1e-6
+                self.dash_vx = dx/dist * 500
+                self.dash_vy = dy/dist * 500
+        else:
+            self.dash_time += dt
+            self.x += self.dash_vx * dt
+            self.y += self.dash_vy * dt
+            if self.dash_time >= self.dash_duration:
+                self.dashing = False
+        # Snake attacks
+        self.snake_timer += dt
+        if self.snake_timer >= self.snake_interval:
+            snakes.append(Snake(self.x, self.y, cx, cy))
+            self.snake_timer = 0.0
+
+# Gary boss with eye-contact mechanic
+class GaryBoss(BaseBoss):
+    def __init__(self, cx, cy, is_shadow=False):
+        super().__init__(cx, cy)
+        self.is_shadow = is_shadow
+        self.radius = 45
+        self.health = 80 if is_shadow else 60
+        self.color = (50, 0, 50) if is_shadow else (255, 105, 180)
+        self.riding_xyz = None
+        self.attack_interval = 1.5
+        self.attack_timer = 0.0
+        self.being_looked_at = False
+        self.anger_level = 0.0
+        self.provoked = False
+        self.teleport_interval = 4.0 if is_shadow else 6.0
+        self.teleport_timer = 0.0
+        # Crystal throw attack
+        self.crystal_interval = 2.5
+        self.crystal_timer = 0.0
+        # Global update flag
+        self.ignores_pause = True
+    def check_eye_contact(self, metrics_list, centers):
+        self.being_looked_at = False
+        for i, metrics in enumerate(metrics_list):
+            cx_i, cy_i = centers[i]
+            # Check if player is looking at Gary
+            yaw = metrics.get('yaw', 0)
+            pitch = metrics.get('pitch', 0)
+            # Calculate if player's gaze direction points at Gary
+            dx = self.x - cx_i
+            dy = self.y - cy_i
+            dist = math.hypot(dx, dy)
+            if dist < 300:  # Close enough to make eye contact
+                gaze_x = math.sin(yaw)
+                gaze_y = -math.sin(pitch)
+                dot = (dx * gaze_x + dy * gaze_y) / (dist or 1e-6)
+                if dot > 0.7:  # Looking roughly at Gary
+                    self.being_looked_at = True
+                    if not self.provoked:
+                        self.anger_level = min(self.anger_level + 0.02, 1.0)
+                        if self.anger_level >= 1.0:
+                            self.provoked = True
+                    break
+    def update(self, dt, cx, cy, metrics_list=None, centers=None):
+        # Always update even during pause
+        if self.riding_xyz and self.riding_xyz.health > 0:
+            # Ride on top of XYZ
+            self.x = self.riding_xyz.x
+            self.y = self.riding_xyz.y - 50
+        else:
+            super().update(dt, cx, cy)
+        # Check eye contact
+        if metrics_list and centers:
+            self.check_eye_contact(metrics_list, centers)
+        # Attacks only if not being looked at (or if provoked)
+        if not self.being_looked_at or self.provoked:
+            self.attack_timer += dt
+            if self.attack_timer >= self.attack_interval:
+                # Melee or crystal throw
+                if math.hypot(self.x - cx, self.y - cy) < 150:
+                    # Close range melee - damage handled elsewhere
+                    pass
+                else:
+                    # Throw crystal
+                    dx = cx - self.x
+                    dy = cy - self.y
+                    dist = math.hypot(dx, dy) or 1e-6
+                    vx = dx/dist * 300
+                    vy = dy/dist * 300
+                    crystal = PurpleLaser(self.x, self.y, vx, vy)
+                    crystal.color = (255, 0, 255) if self.is_shadow else (255, 192, 203)
+                    lasers.append(crystal)
+                self.attack_timer = 0.0
+        # Teleportation
+        self.teleport_timer += dt
+        if self.teleport_timer >= self.teleport_interval:
+            if self.is_shadow:
+                # Shadow Gary teleports to dark corners
+                corners = [(50, 50), (590, 50), (50, 430), (590, 430)]
+                self.x, self.y = random.choice(corners)
+            else:
+                # Normal Gary random teleport
+                self.x = random.randint(50, 590)
+                self.y = random.randint(50, 430)
+            self.teleport_timer = 0.0
+
+# Elder Dimension Portal
+class ElderPortal:
+    def __init__(self, x, y):
+        self.x = x
+        self.y = y
+        self.radius = 40
+        self.active = True
+        self.pulse = 0.0
+        self.spawn_timer = 0.0
+        self.gary_spawned = False
+    def update(self, dt):
+        self.pulse += dt * 2
+        self.spawn_timer += dt
+        if self.spawn_timer >= 5.0 and not self.gary_spawned:
+            # Spawn Gary from portal
+            global gary_boss
+            is_shadow = random.random() < 0.01  # 1% chance for Shadow Gary
+            gary_boss = GaryBoss(self.x, self.y, is_shadow)
+            # Also spawn XYZ for Gary to ride
+            xyz = XYZ(self.x, self.y + 100)
+            gary_boss.riding_xyz = xyz
+            creatures.append(xyz)
+            self.gary_spawned = True
+            global elder_dimension_active
+            elder_dimension_active = True
+
 def main():
     # New game loop replacing facial demo
     fc = FaceController()
@@ -327,10 +503,14 @@ def main():
     phrases = ["Hello, I'm your avatar.", "How are you today?", "I am your digital friend."]
     phrase_index = 0
     # Game state
-    global creatures, lasers, fireballs
+    global creatures, lasers, fireballs, snakes, portals, gary_boss, elder_dimension_active
     creatures = []
     lasers = []
     fireballs = []  # for boss ranged attacks
+    snakes = []  # XYZ snake attacks
+    portals = []  # Elder dimension portals
+    gary_boss = None
+    elder_dimension_active = False
     # Player lives and invulnerability timers
     player_lives = []
     invul_timers = []
@@ -396,6 +576,11 @@ def main():
                 if event.key == pygame.K_v:
                     vc.speak(phrases[phrase_index])
                     phrase_index = (phrase_index + 1) % len(phrases)
+                elif event.key == pygame.K_p and not elder_dimension_active:
+                    # Create Elder Dimension portal with P key
+                    portal_x = random.randint(100, screen_w - 100)
+                    portal_y = random.randint(100, screen_h - 100)
+                    portals.append(ElderPortal(portal_x, portal_y))
         # Spawn creatures (minion waves)
         if state == 'minions':
             current = pygame.time.get_ticks() / 1000.0
@@ -443,6 +628,20 @@ def main():
         for l in lasers:
             l.update(dt)
         lasers = [l for l in lasers if l.active]
+        
+        # Update snakes
+        for s in snakes:
+            s.update(dt)
+        snakes = [s for s in snakes if s.active]
+        
+        # Update portals
+        for p in portals:
+            p.update(dt)
+        
+        # Update Gary (always, even during pause)
+        if gary_boss:
+            nearest_center = centers[0] if centers else (320, 240)
+            gary_boss.update(dt, nearest_center[0], nearest_center[1], metrics_list, centers)
         # Update creatures: chase nearest avatar
         for c in creatures:
             # find nearest avatar center
@@ -492,6 +691,29 @@ def main():
             if not hit:
                 remaining.append(c)
         creatures = remaining
+        
+        # Snake collisions with players
+        for s in snakes:
+            for i, (cx_i, cy_i) in enumerate(centers):
+                if invul_timers[i] <= 0 and math.hypot(s.x - cx_i, s.y - cy_i) < (s.radius + 100):
+                    player_lives[i] -= 1
+                    invul_timers[i] = 2.0
+                    if player_lives[i] <= 0:
+                        player_lives[i] = 3
+                        invul_timers[i] = 2.0
+                    s.active = False
+                    break
+        
+        # Gary attacks (melee damage)
+        if gary_boss and (not gary_boss.being_looked_at or gary_boss.provoked):
+            for i, (cx_i, cy_i) in enumerate(centers):
+                if invul_timers[i] <= 0 and math.hypot(gary_boss.x - cx_i, gary_boss.y - cy_i) < (gary_boss.radius + 100):
+                    player_lives[i] -= 2  # Gary does double damage
+                    invul_timers[i] = 2.0
+                    if player_lives[i] <= 0:
+                        player_lives[i] = 3
+                        invul_timers[i] = 2.0
+        
         # Transition to boss when wave_kills reaches target
         if state == 'minions' and wave_kills >= kill_targets[wave_index]:
             # Initialize appropriate boss based on wave index
@@ -528,7 +750,7 @@ def main():
                 state = 'boss_madackeda'
             # Reset wave_kills and clear minions/lasers for boss phase
             wave_kills = 0
-            creatures.clear(); lasers.clear()
+            creatures.clear(); lasers.clear(); snakes.clear()
         # Update boss phases (all bosses)
         if boss is not None:
             # Determine nearest avatar for targeting
@@ -562,6 +784,16 @@ def main():
                     if l.active and math.hypot(boss.x - l.x, boss.y - l.y) < (boss.radius + l.radius):
                         boss.health -= 1
                         l.active = False
+        
+        # Gary boss takes damage (when not being looked at)
+        if gary_boss and not gary_boss.being_looked_at:
+            for l in lasers:
+                if l.active and math.hypot(gary_boss.x - l.x, gary_boss.y - l.y) < (gary_boss.radius + l.radius):
+                    gary_boss.health -= 1
+                    l.active = False
+                    if gary_boss.health <= 0:
+                        gary_boss = None
+                        elder_dimension_active = False
             # Boss defeat and wave progression
             if boss.health <= 0:
                 wave_index += 1
@@ -664,7 +896,9 @@ def main():
             bcol = getattr(boss, 'color', (128,0,128))
             pygame.draw.circle(screen, bcol, (int(boss.x), int(boss.y)), boss.radius)
             # Health bar
-            hb_w, hb_h = 80, 8; bx, by = cx, cy - 150 - boss.radius - 20
+            hb_w, hb_h = 80, 8
+            bx = int(boss.x)
+            by = int(boss.y) - boss.radius - 20
             pygame.draw.rect(screen, (255,0,0), pygame.Rect(bx - hb_w//2, by, hb_w, hb_h))
             hp_w = int(hb_w * max(boss.health,0) / 20)
             pygame.draw.rect(screen, (0,255,0), pygame.Rect(bx - hb_w//2, by, hp_w, hb_h))
@@ -675,6 +909,91 @@ def main():
         for fb in fireballs:
             col = getattr(fb, 'color', (255,0,0))
             pygame.draw.circle(screen, col, (int(fb.x), int(fb.y)), fb.radius)
+        
+        # Draw snakes
+        for s in snakes:
+            col = getattr(s, 'color', (50,200,50))
+            pygame.draw.circle(screen, col, (int(s.x), int(s.y)), s.radius)
+        
+        # Draw portals
+        for p in portals:
+            pulse_r = int(p.radius + math.sin(p.pulse) * 10)
+            # Portal outer ring
+            pygame.draw.circle(screen, (128, 0, 128), (int(p.x), int(p.y)), pulse_r, 3)
+            # Portal inner swirl
+            for angle in range(0, 360, 30):
+                rad = math.radians(angle + p.pulse * 50)
+                inner_x = p.x + math.cos(rad) * (pulse_r - 10)
+                inner_y = p.y + math.sin(rad) * (pulse_r - 10)
+                pygame.draw.circle(screen, (200, 100, 200), (int(inner_x), int(inner_y)), 5)
+        
+        # Draw Gary boss
+        if gary_boss:
+            # Draw XYZ if Gary is riding it
+            if gary_boss.riding_xyz and gary_boss.riding_xyz.health > 0:
+                xyz = gary_boss.riding_xyz
+                # XYZ body
+                pygame.draw.circle(screen, xyz.color, (int(xyz.x), int(xyz.y)), xyz.radius)
+                # XYZ features (scales, spikes)
+                for angle in range(0, 360, 45):
+                    rad = math.radians(angle)
+                    spike_x = xyz.x + math.cos(rad) * xyz.radius
+                    spike_y = xyz.y + math.sin(rad) * xyz.radius
+                    end_x = xyz.x + math.cos(rad) * (xyz.radius + 15)
+                    end_y = xyz.y + math.sin(rad) * (xyz.radius + 15)
+                    pygame.draw.line(screen, (75, 25, 125), 
+                                   (int(spike_x), int(spike_y)), 
+                                   (int(end_x), int(end_y)), 3)
+            
+            # Draw Gary
+            gary_col = gary_boss.color
+            if gary_boss.being_looked_at and not gary_boss.provoked:
+                # Peaceful pink when being looked at
+                gary_col = (255, 192, 203)
+            elif gary_boss.provoked:
+                # Angry red when provoked
+                gary_col = (255, 50, 50)
+            
+            pygame.draw.circle(screen, gary_col, (int(gary_boss.x), int(gary_boss.y)), gary_boss.radius)
+            
+            # Gary's crystal crown
+            for i in range(5):
+                angle = i * 72 - 90
+                rad = math.radians(angle)
+                crown_x = gary_boss.x + math.cos(rad) * (gary_boss.radius - 10)
+                crown_y = gary_boss.y - gary_boss.radius + math.sin(rad) * 10
+                pygame.draw.polygon(screen, (255, 0, 255), 
+                                  [(int(crown_x), int(crown_y - 10)),
+                                   (int(crown_x - 5), int(crown_y)),
+                                   (int(crown_x + 5), int(crown_y))])
+            
+            # Gary's eyes (red when angry)
+            eye_col = (255, 0, 0) if gary_boss.provoked else (200, 50, 200)
+            pygame.draw.circle(screen, eye_col, 
+                             (int(gary_boss.x - 10), int(gary_boss.y - 5)), 5)
+            pygame.draw.circle(screen, eye_col, 
+                             (int(gary_boss.x + 10), int(gary_boss.y - 5)), 5)
+            
+            # Health bar for Gary
+            hb_w, hb_h = 100, 10
+            hb_x = gary_boss.x - hb_w//2
+            hb_y = gary_boss.y - gary_boss.radius - 30
+            pygame.draw.rect(screen, (100, 0, 0), 
+                           pygame.Rect(int(hb_x), int(hb_y), hb_w, hb_h))
+            hp_ratio = max(0, gary_boss.health / (80 if gary_boss.is_shadow else 60))
+            hp_w = int(hb_w * hp_ratio)
+            pygame.draw.rect(screen, (255, 0, 255) if gary_boss.is_shadow else (255, 105, 180), 
+                           pygame.Rect(int(hb_x), int(hb_y), hp_w, hb_h))
+            
+            # Label for Gary
+            label = "Shadow Gary" if gary_boss.is_shadow else "Gary"
+            if gary_boss.riding_xyz:
+                label += " riding XYZ"
+            text_surf = font.render(label, True, (255, 255, 255))
+            text_x = gary_boss.x - text_surf.get_width()//2
+            text_y = gary_boss.y - gary_boss.radius - 50
+            screen.blit(text_surf, (int(text_x), int(text_y)))
+        
         # HUD
         # Show kills in this wave
         kt = kill_targets[wave_index] if wave_index < len(kill_targets) else 0
@@ -683,6 +1002,12 @@ def main():
         if boss:
             name = boss.__class__.__name__
             screen.blit(font.render(f'{name} Fight!', True, (255,255,255)), (10,30))
+        # Show Elder Dimension status
+        if elder_dimension_active:
+            screen.blit(font.render('Elder Dimension Active!', True, (200,0,200)), (10,50))
+            screen.blit(font.render('Press P to create portal', True, (150,150,150)), (10,70))
+        elif not portals and wave_index >= 5:  # Allow portals after wave 5
+            screen.blit(font.render('Press P to open Elder Portal', True, (150,150,150)), (10,50))
         # Victory
         if state == 'victory':
             screen.blit(font.render('Victory! You saved the Overworld!', True, (0,255,0)), (150,240))
