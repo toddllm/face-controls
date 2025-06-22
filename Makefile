@@ -2,7 +2,7 @@ SHELL := /usr/bin/env bash
 # Load environment variables
 export $(shell sed 's/=.*//' .env)
 
-.PHONY: serve deploy-static deploy
+.PHONY: serve deploy-static deploy validate
 
 serve:
 	@echo "Running backend server..."
@@ -12,8 +12,12 @@ deploy-static:
 	@echo "Deploying static files to S3..."
 	@bash scripts/deploy_static.sh
 
-deploy: deploy-static
+deploy: validate deploy-static
 	@echo "Deployment complete."
+
+validate:
+	@echo "Running pre-deployment validation..."
+	@bash scripts/validate.sh
 
 # SSL workflow is now handled by scripts/ssl_deploy.sh
 .PHONY: ssl-deploy

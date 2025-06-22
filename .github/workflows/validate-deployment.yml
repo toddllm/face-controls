@@ -1,0 +1,220 @@
+name: Validate Before Deploy
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Syntax validation
+        run: |
+          echo "Checking JavaScript syntax..."
+          node -c web/app.js || exit 1
+          echo "✓ JavaScript syntax valid"
+
+      - name: Static analysis
+        run: |
+          echo "Running static analysis..."
+          # Check for common issues
+          
+          # Check for const reassignments
+          echo "Checking for const reassignments..."
+          if grep -n "^\s*const.*=.*\[\]" web/app.js | while read -r line; do
+            var_name=$(echo "$line" | sed -n 's/.*const \([a-zA-Z_][a-zA-Z0-9_]*\).*/\1/p')
+            line_num=$(echo "$line" | cut -d: -f1)
+            if [ ! -z "$var_name" ]; then
+              if grep -E "^\s*${var_name}\s*=" web/app.js | grep -v "const ${var_name}"; then
+                echo "ERROR: const variable '$var_name' (line $line_num) is reassigned!"
+                exit 1
+              fi
+            fi
+          done; then
+            echo "✓ No const reassignment issues"
+          fi
+          
+          # Check for undefined class references
+          echo "Checking class initialization order..."
+          node -e "
+            const fs = require('fs');
+            const code = fs.readFileSync('web/app.js', 'utf8');
+            const classExtends = [...code.matchAll(/class\s+(\w+)\s+extends\s+(\w+)/g)];
+            const classDefinitions = [...code.matchAll(/class\s+(\w+)/g)].map(m => ({name: m[1], index: m.index}));
+            
+            let errors = false;
+            for (const [full, child, parent] of classExtends) {
+              const childDef = classDefinitions.find(c => c.name === child);
+              const parentDef = classDefinitions.find(c => c.name === parent);
+              
+              if (!parentDef) {
+                console.error(\`ERROR: Class '\${parent}' not found (extended by '\${child}')\`);
+                errors = true;
+              } else if (childDef && parentDef.index > childDef.index) {
+                console.error(\`ERROR: Class '\${parent}' defined after '\${child}' extends it\`);
+                errors = true;
+              }
+            }
+            
+            if (!errors) {
+              console.log('✓ Class initialization order correct');
+            } else {
+              process.exit(1);
+            }
+          "
+
+      - name: Start local server
+        run: |
+          cd web
+          python3 -m http.server 8080 &
+          SERVER_PID=$!
+          echo "SERVER_PID=$SERVER_PID" >> $GITHUB_ENV
+          sleep 5
+
+      - name: Install Playwright
+        run: |
+          npm init -y
+          npm install @playwright/test
+          npx playwright install chromium
+
+      - name: Run browser tests
+        run: |
+          cat > test-deployment.js << 'EOF'
+          const { chromium } = require('playwright');
+          
+          (async () => {
+            const browser = await chromium.launch();
+            const context = await browser.newContext();
+            const page = await context.newPage();
+            
+            let hasErrors = false;
+            const errors = [];
+            
+            // Capture console errors
+            page.on('console', msg => {
+              if (msg.type() === 'error') {
+                errors.push(msg.text());
+                hasErrors = true;
+              }
+            });
+            
+            // Capture page errors
+            page.on('pageerror', error => {
+              errors.push(error.message);
+              hasErrors = true;
+            });
+            
+            try {
+              console.log('Loading page...');
+              await page.goto('http://localhost:8080', { waitUntil: 'networkidle' });
+              
+              // Wait for initial load
+              await page.waitForTimeout(2000);
+              
+              // Check if critical elements exist
+              console.log('Checking for critical elements...');
+              const startButton = await page.$('#startButton');
+              if (!startButton) {
+                throw new Error('Start button not found');
+              }
+              
+              // Check for JavaScript errors during load
+              if (errors.length > 0) {
+                console.error('Console errors detected:');
+                errors.forEach(err => console.error(`  - ${err}`));
+                hasErrors = true;
+              }
+              
+              // Try to start the game (without camera)
+              console.log('Testing game start...');
+              await page.evaluate(() => {
+                // Mock getUserMedia to avoid camera requirement
+                navigator.mediaDevices.getUserMedia = async () => {
+                  return {
+                    getTracks: () => [],
+                    getVideoTracks: () => [],
+                    getAudioTracks: () => []
+                  };
+                };
+              });
+              
+              // Click start button
+              await page.click('#startButton');
+              await page.waitForTimeout(1000);
+              
+              // Check if Elder Portal button appears
+              const elderButton = await page.$('#elderPortalButton');
+              if (!elderButton) {
+                console.error('Elder Portal button not found after game start');
+                hasErrors = true;
+              }
+              
+              // Final error check
+              if (errors.length > 0) {
+                console.error(`\nTotal errors found: ${errors.length}`);
+                hasErrors = true;
+              } else {
+                console.log('✓ No console errors detected');
+              }
+              
+            } catch (error) {
+              console.error('Test failed:', error.message);
+              hasErrors = true;
+            } finally {
+              await browser.close();
+              process.exit(hasErrors ? 1 : 0);
+            }
+          })();
+          EOF
+          
+          node test-deployment.js
+
+      - name: Cleanup
+        if: always()
+        run: |
+          if [ ! -z "$SERVER_PID" ]; then
+            kill $SERVER_PID || true
+          fi
+
+  staging-deploy:
+    needs: validate
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Deploy to staging
+        run: |
+          # Deploy to staging bucket (if configured)
+          if [ ! -z "${{ secrets.STAGING_BUCKET }}" ]; then
+            aws s3 sync web/ s3://${{ secrets.STAGING_BUCKET }} --delete \
+              --cache-control "no-cache, no-store, must-revalidate"
+            echo "Deployed to staging: https://${{ secrets.STAGING_BUCKET }}.s3-website-${{ secrets.AWS_REGION }}.amazonaws.com"
+          else
+            echo "No staging bucket configured. Skipping staging deployment."
+          fi
+
+      - name: Run staging tests
+        if: ${{ secrets.STAGING_BUCKET != '' }}
+        run: |
+          # Run tests against staging environment
+          echo "Would run Playwright tests against staging URL here"
