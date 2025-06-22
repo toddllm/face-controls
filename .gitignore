@@ -68,3 +68,10 @@ terraform/.terraform/
 # Generated content
 generated/
 output/
+
+# AWS CLI installation files
+aws/
+awscliv2.zip
+
+# Zone.Identifier files from Windows
+*.Zone.Identifier
