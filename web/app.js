@@ -371,7 +371,8 @@
       super(cx, cy);
       this.isShadow = isShadow;
       this.radius = 45;
-      this.health = isShadow ? 80 : 60;
+      this.health = 999; // Immortal
+      this.maxHealth = 999;
       this.color = isShadow ? '#330033' : '#FF69B4';
       this.ridingXyz = null;
       this.ridingShip = null;
@@ -1041,19 +1042,24 @@
       });
     }
     
-    // Gary takes damage (when not being looked at)
-    if (garyBoss && !garyBoss.beingLookedAt) {
+    // Gary is immortal (already dead/undead) - lasers just pass through
+    if (garyBoss) {
       lasers.forEach(l => {
         if (l.active && Math.hypot(garyBoss.x - l.x, garyBoss.y - l.y) < garyBoss.radius + l.radius) {
-          garyBoss.health -= 1;
+          // Lasers pass through Gary without damage
           l.active = false;
-          if (garyBoss.health <= 0) {
-            garyBoss = null;
-            elderDimensionActive = false;
-          }
+          garyBoss.speak(""); // Gary laughs at the attempt
         }
       });
     }
+    // Update invulnerability timers
+    for (let i = 0; i < invulTimers.length; i++) {
+      if (invulTimers[i] > 0) {
+        invulTimers[i] -= dt;
+        if (invulTimers[i] < 0) invulTimers[i] = 0;
+      }
+    }
+    
     // Update creatures
     creatures.forEach(c=>c.update(dt,canvasElement.width/2,canvasElement.height/2));
     // Collision: creatures with avatars
@@ -1512,19 +1518,25 @@
         ctx.restore();
       }
       
-      // Health bar for Gary
-      const garyMaxHealth = garyBoss.isShadow ? 80 : 60;
+      // Health bar for Gary (immortal)
       const hbW = 100, hbH = 10;
       const hbX = garyBoss.x - hbW/2;
       const hbY = garyBoss.y - garyBoss.radius - 30;
       ctx.fillStyle = '#400040';
       ctx.fillRect(hbX, hbY, hbW, hbH);
-      const hpRatio = Math.max(0, garyBoss.health / garyMaxHealth);
+      // Always full health - Gary is immortal
       ctx.fillStyle = garyBoss.isShadow ? '#FF00FF' : '#FF69B4';
-      ctx.fillRect(hbX, hbY, hbW * hpRatio, hbH);
+      ctx.fillRect(hbX, hbY, hbW, hbH);
       ctx.strokeStyle = '#FFF';
       ctx.lineWidth = 2;
       ctx.strokeRect(hbX, hbY, hbW, hbH);
+      // Draw "IMMORTAL" text
+      ctx.save();
+      ctx.font = 'bold 10px Arial';
+      ctx.fillStyle = '#FFD700';
+      ctx.textAlign = 'center';
+      ctx.fillText('IMMORTAL', garyBoss.x, hbY - 5);
+      ctx.restore();
       
       // Label for Gary
       ctx.save();
@@ -1582,27 +1594,47 @@
       ctx.fill();
       ctx.restore();
       // hearts
-      const hl = playerLives[i] || 3;
+      if (!playerLives[i]) playerLives[i] = 3; // Initialize if not set
+      if (!invulTimers[i]) invulTimers[i] = 0; // Initialize timer
+      const hl = playerLives[i];
       ctx.save();
       for(let j = 0; j < hl; j++) {
-        const heartX = fx - 20 + j * 20;
-        const heartY = fy - 70;
+        const heartX = fx - 30 + j * 25;
+        const heartY = fy - 80;
         
         // Draw heart shape
-        ctx.fillStyle = '#FF0000';
+        ctx.fillStyle = invulTimers[i] > 0 && Math.floor(invulTimers[i] * 10) % 2 ? '#FFAAAA' : '#FF0000';
         ctx.beginPath();
         // Left curve
-        ctx.arc(heartX - 5, heartY, 6, Math.PI, 0);
+        ctx.arc(heartX - 6, heartY, 8, Math.PI, 0);
         // Right curve
-        ctx.arc(heartX + 5, heartY, 6, Math.PI, 0);
+        ctx.arc(heartX + 6, heartY, 8, Math.PI, 0);
         // Bottom point
-        ctx.lineTo(heartX, heartY + 12);
+        ctx.lineTo(heartX, heartY + 15);
         ctx.closePath();
         ctx.fill();
         
         // Heart outline
         ctx.strokeStyle = '#8B0000';
-        ctx.lineWidth = 1;
+        ctx.lineWidth = 2;
+        ctx.stroke();
+      }
+      
+      // Draw empty hearts for lost lives
+      for(let j = hl; j < 3; j++) {
+        const heartX = fx - 30 + j * 25;
+        const heartY = fy - 80;
+        
+        ctx.strokeStyle = '#666666';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        // Left curve
+        ctx.arc(heartX - 6, heartY, 8, Math.PI, 0);
+        // Right curve
+        ctx.arc(heartX + 6, heartY, 8, Math.PI, 0);
+        // Bottom point
+        ctx.lineTo(heartX, heartY + 15);
+        ctx.closePath();
         ctx.stroke();
       }
       ctx.restore();
