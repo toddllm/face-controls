@@ -250,6 +250,26 @@
         snakes.push(new Snake(this.x, this.y, targetX, targetY));
         this.snakeTimer = 0;
       }
+      
+      // Melee attacks on players when close
+      if ((!this.villageTarget || this.villageTarget.destroyed) && this.centers) {
+        // Attack players in melee range
+        const meleeRange = this.radius + 60;
+        this.centers.forEach((cen, i) => {
+          if (!this.eatenByGary[i] && this.invulTimers[i] <= 0) {
+            const dist = Math.hypot(this.x - cen[0], this.y - cen[1]);
+            if (dist < meleeRange) {
+              // Dragon bite attack
+              this.playerLives[i] = (this.playerLives[i] || 3) - 1;
+              this.invulTimers[i] = 2.0;
+              if (this.playerLives[i] <= 0) {
+                this.playerLives[i] = 3;
+                this.invulTimers[i] = 2.0;
+              }
+            }
+          }
+        });
+      }
     }
   }
   
@@ -397,7 +417,7 @@
       this.lastVoiceLine = "";
       
       // Audio setup for Gary's voice
-      this.audio = new Audio('../gary.mp3');
+      this.audio = new Audio('gary.mp3'); // Fix path - gary.mp3 is in web folder
       this.audio.volume = 0.7;
       this.audioPlaying = false;
       
@@ -597,9 +617,10 @@
         }
       }
       
-      // Voice talking
+      // Voice talking - more frequent when hunting
       this.voiceTimer += dt;
-      if (this.voiceTimer >= this.voiceInterval) {
+      const voiceInterval = this.huntTarget ? 4.0 : this.voiceInterval;
+      if (this.voiceTimer >= voiceInterval) {
         this.speak(""); // Just play the audio
         this.voiceTimer = 0;
       }
@@ -1148,7 +1169,16 @@
     }
     
     // Update creatures
-    creatures.forEach(c=>c.update(dt,canvasElement.width/2,canvasElement.height/2));
+    creatures.forEach(c=> {
+      if (c instanceof XYZ) {
+        // Pass centers to XYZ for player attacks
+        c.centers = centers;
+        c.invulTimers = invulTimers;
+        c.playerLives = playerLives;
+        c.eatenByGary = eatenByGary;
+      }
+      c.update(dt,canvasElement.width/2,canvasElement.height/2);
+    });
     // Collision: creatures with avatars
     let newCreatures=[];
     creatures.forEach(c=>{
@@ -1326,6 +1356,40 @@
       ctx.font = 'bold 20px Arial';
       ctx.fillStyle = '#DA70D6';
       ctx.fillText('Elder Dimension Active!', overlayLeft, 110);
+      
+      // Show objectives
+      ctx.font = 'bold 18px Arial';
+      ctx.fillStyle = '#FFD700';
+      ctx.fillText('OBJECTIVE: Defeat the dragon!', overlayLeft, 140);
+      ctx.fillStyle = '#FF6B6B';
+      ctx.fillText('WARNING: Survive Gary as long as you can!', overlayLeft, 165);
+      
+      // Find XYZ dragon health
+      let xyzDragon = null;
+      creatures.forEach(c => {
+        if (c instanceof XYZ) {
+          xyzDragon = c;
+        }
+      });
+      
+      if (xyzDragon) {
+        ctx.font = 'bold 16px Arial';
+        ctx.fillStyle = '#9370DB';
+        ctx.fillText(`Dragon Health: ${xyzDragon.health}/100`, overlayLeft, 190);
+      } else {
+        // Dragon defeated - VICTORY!
+        ctx.save();
+        ctx.font = 'bold 48px Arial';
+        ctx.fillStyle = '#FFD700';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.shadowColor = '#000';
+        ctx.shadowBlur = 10;
+        ctx.fillText('VICTORY!', canvasElement.width/2, canvasElement.height/2 - 50);
+        ctx.font = 'bold 24px Arial';
+        ctx.fillText('You defeated the dragon!', canvasElement.width/2, canvasElement.height/2);
+        ctx.restore();
+      }
     } else if (!portals.length) {
       ctx.font = 'bold 18px Arial';
       ctx.fillStyle = '#BBB';
