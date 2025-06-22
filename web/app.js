@@ -400,6 +400,16 @@
       this.audio = new Audio('../gary.mp3');
       this.audio.volume = 0.7;
       this.audioPlaying = false;
+      
+      // Eating and growth
+      this.eatRadius = 30;
+      this.eatTimer = 0;
+      this.eatInterval = 0.5;
+      this.totalEaten = 0;
+      this.baseRadius = 45;
+      this.growthRate = 2; // Grow 2 pixels per entity eaten
+      this.huntTarget = null;
+      this.huntSpeed = 150;
     }
     checkEyeContact(metricsList, centers) {
       this.beingLookedAt = false;
@@ -467,12 +477,52 @@
         }
       }
       
+      // Hunt for food (any creature or player)
+      if (!this.huntTarget || this.huntTarget.health <= 0 || this.huntTarget.destroyed) {
+        // Find nearest prey
+        let nearestPrey = null;
+        let nearestDist = Infinity;
+        
+        // Hunt creatures
+        creatures.forEach(c => {
+          if (c !== this.ridingXyz && c.health > 0) {
+            const dist = Math.hypot(c.x - this.x, c.y - this.y);
+            if (dist < nearestDist) {
+              nearestDist = dist;
+              nearestPrey = c;
+            }
+          }
+        });
+        
+        // Also hunt players
+        centers.forEach((cen, i) => {
+          if (!eatenByGary[i]) {
+            const dist = Math.hypot(cen[0] - this.x, cen[1] - this.y);
+            if (dist < nearestDist) {
+              nearestDist = dist;
+              nearestPrey = { x: cen[0], y: cen[1], type: 'player', index: i };
+            }
+          }
+        });
+        
+        this.huntTarget = nearestPrey;
+      }
+      
       // Movement logic
+      let targetX = tx;
+      let targetY = ty;
+      
+      // If hunting, move toward prey
+      if (this.huntTarget) {
+        targetX = this.huntTarget.x;
+        targetY = this.huntTarget.y;
+      }
+      
       if (this.ridingShip) {
         // Ship controls - Gary can fly around
         const shipSpeed = 200;
-        const dx = tx - this.x;
-        const dy = ty - this.y;
+        const dx = targetX - this.x;
+        const dy = targetY - this.y;
         const dist = Math.hypot(dx, dy) || 1e-6;
         this.x += (dx/dist) * shipSpeed * dt;
         this.y += (dy/dist) * shipSpeed * dt;
@@ -481,12 +531,49 @@
         this.x = this.ridingXyz.x;
         this.y = this.ridingXyz.y - 50;
       } else {
-        super.update(dt, tx, ty);
+        // Hunt movement
+        const dx = targetX - this.x;
+        const dy = targetY - this.y;
+        const dist = Math.hypot(dx, dy) || 1e-6;
+        this.x += (dx/dist) * this.huntSpeed * dt;
+        this.y += (dy/dist) * this.huntSpeed * dt;
       }
       
       // Check eye contact
       if (metricsList && centers) {
         this.checkEyeContact(metricsList, centers);
+      }
+      
+      // Eating logic
+      this.eatTimer += dt;
+      if (this.eatTimer >= this.eatInterval) {
+        // Check creatures
+        for (let i = creatures.length - 1; i >= 0; i--) {
+          const c = creatures[i];
+          if (c !== this.ridingXyz && Math.hypot(c.x - this.x, c.y - this.y) < this.radius + this.eatRadius) {
+            // Eat the creature
+            creatures.splice(i, 1);
+            this.totalEaten++;
+            this.radius = this.baseRadius + (this.totalEaten * this.growthRate);
+            this.speak("");
+            this.huntTarget = null; // Find new target
+          }
+        }
+        
+        // Check players
+        centers.forEach((cen, i) => {
+          if (!eatenByGary[i] && Math.hypot(cen[0] - this.x, cen[1] - this.y) < this.radius + this.eatRadius) {
+            // Eat the player
+            eatenByGary[i] = true;
+            playerLives[i] = 0;
+            this.totalEaten++;
+            this.radius = this.baseRadius + (this.totalEaten * this.growthRate);
+            this.speak("");
+            this.huntTarget = null; // Find new target
+          }
+        });
+        
+        this.eatTimer = 0;
       }
       
       // Handle held items
@@ -1040,21 +1127,7 @@
     });
     snakes = snakes.filter(s => s.active);
     
-    // Gary attacks (melee damage)
-    if (garyBoss && (!garyBoss.beingLookedAt || garyBoss.provoked)) {
-      centers.forEach((cen, i) => {
-        if (!eatenByGary[i] && invulTimers[i] <= 0 && Math.hypot(garyBoss.x - cen[0], garyBoss.y - cen[1]) < garyBoss.radius + 50) {
-          playerLives[i] = (playerLives[i] || 3) - 2; // Gary does double damage
-          invulTimers[i] = 2.0;
-          if (playerLives[i] <= 0) {
-            // Player eaten by Gary - no respawn
-            eatenByGary[i] = true;
-            playerLives[i] = 0;
-            garyBoss.speak("");
-          }
-        }
-      });
-    }
+    // Gary's eating is now handled in her update method
     
     // Gary is immortal (already dead/undead) - lasers just pass through
     if (garyBoss) {
@@ -1567,6 +1640,13 @@
       if (garyBoss.ridingXyz) label += ' riding XYZ';
       else if (garyBoss.ridingShip) label += ' in Ship';
       ctx.fillText(label, garyBoss.x, garyBoss.y - garyBoss.radius - 40);
+      
+      // Show eaten count
+      if (garyBoss.totalEaten > 0) {
+        ctx.font = 'bold 14px Arial';
+        ctx.fillStyle = '#FFD700';
+        ctx.fillText(`Eaten: ${garyBoss.totalEaten}`, garyBoss.x, garyBoss.y - garyBoss.radius - 55);
+      }
       ctx.restore();
     }
     
